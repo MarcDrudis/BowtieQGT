@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "BowtieQuantumGeometricTensor"
+dynamic = ["version"]
+description = "A particle filter implementation in Python and NumPy."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Marc Drudis", email = "marcsanzdrudis@outlook.com" },
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+]
+license = {text = "Apache-2.0"}
+dependencies = [
+  "numpy>=2",
+  "pre-commit>=4.5.1",
+  "qiskit>=2.0",
+  "qiskit_algorithms>=0.4.0",
+  "matplotlib",
+  "tqdm",
+  "icecream",
+  "qiskit-aer",
+  'ddt',
+]
+
+[tool.setuptools_scm]
+version_file = "bowtie_qgt/_version.py"
+
+[project.urls]
+Homepage = "https://github.com/MarcDrudis/BowtieQGT"
+BugTracker = "https://github.com/MarcDrudis/BowtieQGT/issues"
+
+[project.optional-dependencies]
+dev = [
+  "pytest",     # For running tests
+  "ruff",       # Formatter and linter
+  "pre-commit", # Pre-commit hooks
+  "towncrier",  # Changelog management
+]
+
+[tool.ruff]
+lint.select = ["E", "F", "I"] # pycodestyle, pyflake, isort
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402", "F401"] # Ignore unused import in init files
+
+[tool.towncrier]
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+template = "towncrier:default"
+version = "attr: bowtie_qgt.__version__"
+
+[dependency-groups]
+dev = [
+  "furo>=2025.12.19",
+  "sphinx>=9.0.4",
+  "sphinx-autodoc-typehints>=3.6.1",
+  "sphinx-nefertiti>=0.9.8",
+]
