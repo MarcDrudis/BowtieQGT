@@ -1,6 +1,6 @@
 # BowtieQGT
 
-[![DOI](https://zenodo.org/badge/1239878291.svg)](https://doi.org/10.5281/zenodo.20210386)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20210386-blue)](https://doi.org/10.5281/zenodo.20210386)
 
 
 **Efficient Quantum Geometric Tensor computation for parameterized quantum circuits**
