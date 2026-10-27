@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "BowtieQuantumGeometricTensor"
 dynamic = ["version"]
-description = "A particle filter implementation in Python and NumPy."
+description = "Quantum Geometric Tensor, gradient and variance computation for parameterized circuits via light-cone bowties."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
@@ -22,14 +22,9 @@ classifiers = [
 license = {text = "Apache-2.0"}
 dependencies = [
   "numpy>=2",
-  "pre-commit>=4.5.1",
   "qiskit>=2.0",
-  "qiskit_algorithms>=0.4.0",
-  "matplotlib",
-  "tqdm",
-  "icecream",
   "qiskit-aer",
-  'ddt',
+  "tqdm",
 ]
 
 [tool.setuptools_scm]
@@ -42,6 +37,9 @@ BugTracker = "https://github.com/MarcDrudis/BowtieQGT/issues"
 [project.optional-dependencies]
 dev = [
   "pytest",     # For running tests
+  "ddt",        # Parameterized unittest cases
+  "qiskit_algorithms>=0.4.0", # Reference QGT and gradients in tests
+  "scipy",      # ishermitian in tests
   "ruff",       # Formatter and linter
   "pre-commit", # Pre-commit hooks
   "towncrier",  # Changelog management
@@ -59,7 +57,7 @@ target-version = "py311"
 directory = "changelog.d"
 filename = "CHANGELOG.md"
 template = "towncrier:default"
-version = "attr: bowtie_qgt.__version__"
+package = "bowtie_qgt"
 
 [dependency-groups]
 dev = [
