@@ -8,7 +8,7 @@ bowtie circuits, which are essential for quantum geometric tensor calculations.
 """
 
 from qiskit import QuantumCircuit
-from qiskit.circuit import Gate, Parameter
+from qiskit.circuit import Gate, Parameter, ParameterExpression
 from qiskit.circuit.commutation_library import SessionCommutationChecker as scc
 from qiskit.circuit.library import PauliGate, XGate, YGate, ZGate
 from qiskit.converters import circuit_to_dag, dag_to_circuit
@@ -25,6 +25,47 @@ _rotation_gates: dict[str, Gate] = {
     "rxx": PauliGate("XX"),
     "ryy": PauliGate("YY"),
 }
+
+
+def validate_circuit(qc: QuantumCircuit) -> None:
+    """Check that the circuit only uses parameters the bowtie method supports.
+
+    Every parameter must appear exactly once, as the bare angle of a supported
+    Pauli rotation gate.
+
+    Args:
+        qc: The parameterized quantum circuit.
+
+    Raises:
+        ValueError: If a gate takes a parameter expression (e.g. ``2*θ``), if a
+            parameterized gate is not a supported Pauli rotation, or if a
+            parameter appears in more than one gate.
+    """
+    supported = ", ".join(_rotation_gates)
+    seen = set()
+    for instruction in qc.data:
+        op = instruction.operation
+        for param in op.params:
+            if not isinstance(param, ParameterExpression):
+                continue
+            if not isinstance(param, Parameter):
+                raise ValueError(
+                    f"Gate '{op.name}' takes the parameter expression {param}. Parameter "
+                    "expressions are not supported: each gate angle must be a single "
+                    "Parameter. Use a fresh Parameter and map values to it yourself."
+                )
+            if op.name not in _rotation_gates:
+                raise ValueError(
+                    f"Parameterized gate '{op.name}' is not supported. Supported "
+                    f"parameterized gates are: {supported}. Transpile the circuit to "
+                    "this basis first."
+                )
+            if param in seen:
+                raise ValueError(
+                    f"Parameter {param} appears in more than one gate. Each parameter "
+                    "must appear in exactly one gate; use a separate Parameter per gate."
+                )
+            seen.add(param)
 
 
 def _extend_lightcone(

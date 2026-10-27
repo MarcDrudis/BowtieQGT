@@ -5,7 +5,7 @@
 
 
 def test_import_package():
-    """Test that project_name can be imported."""
+    """Test that bowtie_qgt can be imported."""
     import bowtie_qgt
 
     assert bowtie_qgt is not None
