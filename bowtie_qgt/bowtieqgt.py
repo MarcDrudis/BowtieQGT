@@ -3,54 +3,30 @@
 
 """Bowtie Quantum Geometric Tensor (QGT) computation module.
 
-This module provides efficient computation of the Quantum Geometric Tensor (QGT),
-energy gradients, and variance for parameterized quantum circuits using the
-"bowtie" method. The bowtie approach leverages light-cone structures to reduce
-computational overhead by focusing only on relevant qubits for each parameter
-and observable term.
+This module computes the Quantum Geometric Tensor (QGT), McLachlan gradients and the
+energy variance of a parameterized quantum circuit with the "bowtie" method. Each
+parameter and each Hamiltonian term gets an auxiliary circuit (a bowtie) restricted
+to its light cone, so the cost is exponential in the light-cone width rather than in
+the total number of qubits.
 
-The main class, computes:
-- Quantum Geometric Tensor (QGT) for variational quantum algorithms
-- Energy gradients with respect to circuit parameters
-- Observable variance (optional)
-- Support for both real (VarQITE) and imaginary time evolution gradients
-
-Key Features:
-- Sparse tensor operations for efficient overlap computation
-- Parallel statevector simulation using Qiskit Aer
-- Automatic identification of active qubits per parameter/observable
-- Phase fixing for improved numerical stability
-- GPU acceleration support via Qiskit Aer
+All quantities come out of a single complex matrix, the *generalized QGT*: the
+connected QGT of the circuit extended by one first-order Trotter step of the
+Hamiltonian. See :class:`BowtieQGT` for the conventions.
 
 Example:
-    >>> from qiskit import QuantumCircuit
-    >>> from qiskit.quantum_info import SparsePauliOp
-    >>> from bowtie_qgt.bowtieqgt import BowtieQGT
-    >>>
-    >>> # Create a parameterized circuit
-    >>> qc = QuantumCircuit(4)
-    >>> # ... add parameterized gates ...
-    >>>
-    >>> # Define an observable
-    >>> obs = SparsePauliOp.from_list([("ZIII", 1.0), ("IZII", 1.0)])
-    >>>
-    >>> # Initialize BowtieQGT
-    >>> bowtie = BowtieQGT(qc, obs, phase_fix=True)
-    >>>
-    >>> # Compute QGT and energy at parameter values
-    >>> params = {p: 0.1 for p in qc.parameters}
-    >>> gen_qgt, energy = bowtie.get_derivatives(params)
-    >>>
-    >>> # Extract QGT and gradient
-    >>> qgt = bowtie.extract_qgt(gen_qgt)
-    >>> gradient = bowtie.extract_gradient(gen_qgt)
+    >>> bowtie = BowtieQGT(qc, hamiltonian)
+    >>> generalized_qgt, energy = bowtie.evaluate(parameter_values)
+    >>> qgt = bowtie.extract_qgt(generalized_qgt)
+    >>> b = bowtie.extract_gradient(generalized_qgt, which="real_time")
+    >>> theta_dot = np.linalg.solve(qgt + 1e-6 * np.eye(len(b)), b)
 """
 
+import warnings
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Mapping, Sequence
 from copy import copy
 from itertools import product
-from time import time
+from time import perf_counter
 
 import numpy as np
 from qiskit import QuantumCircuit, transpile
@@ -63,7 +39,7 @@ from tqdm import tqdm
 from bowtie_qgt.bowtie_circuits import (
     observable_bowtie,
     parameter_bowtie,
-    remove_idle_qwires,
+    remove_idle_qubits,
     validate_circuit,
 )
 
@@ -145,166 +121,161 @@ def sparse_overlap_tensors(svAB: np.ndarray, sliceab, svBC: np.ndarray, slicebc)
     return np.vdot(ab, bc)
 
 
-def tensor_phase_fix(svAB, sliceab, svBC, slicebc, phase_fix: bool):
-    """Compute overlap with optional phase fixing correction.
+def connected_overlap(svAB, sliceab, svBC, slicebc):
+    """Compute the connected overlap ``⟨ψ_AB|ψ_BC⟩ - ⟨ψ_AB|0⟩⟨0|ψ_BC⟩``.
 
-    Calculates the overlap between two statevector tensors with an optional
-    phase correction term. The phase fix removes the contribution from the
-    |0...0⟩ computational basis state to improve numerical stability.
+    Bowtie states are expressed in the frame where the variational state is ``|0...0⟩``,
+    so subtracting the ``|0...0⟩`` components projects out the global-phase direction.
+    This makes every block of the generalized QGT gauge invariant.
 
     Args:
         svAB: First statevector tensor.
         sliceab: Slice indices for svAB.
         svBC: Second statevector tensor.
         slicebc: Slice indices for svBC.
-        phase_fix: Boolean or numeric value. If True, applies phase correction
-            by subtracting the product of |0...0⟩ amplitudes.
 
     Returns:
-        Complex number representing the phase-corrected overlap.
+        Complex number representing the connected overlap.
     """
-    return (
-        sparse_overlap_tensors(svAB, sliceab, svBC, slicebc)
-        - zeroth(svAB) * zeroth(svBC) * phase_fix
+    return sparse_overlap_tensors(svAB, sliceab, svBC, slicebc) - np.conj(zeroth(svAB)) * zeroth(
+        svBC
     )
 
 
 class BowtieQGT:
-    """Efficient Quantum Geometric Tensor computation using the bowtie method.
+    r"""Quantum Geometric Tensor, gradients and variance via light-cone bowties.
 
-    This class computes the generalized QGT matrix that includes:
-    - QGT block: metric tensor for the parameter space
-    - Gradient block: energy derivatives with respect to parameters
-    - Variance block: observable variance (optional)
+    Conventions:
+        Let :math:`|\psi(\theta)\rangle = U(\theta)|0\rangle` and
+        :math:`H = \sum_j c_j h_j` with Pauli terms :math:`h_j`. Extend the
+        parameter tangents :math:`|\partial_i\psi\rangle` with one tangent per
+        Hamiltonian term, :math:`-i h_j|\psi\rangle` (the derivative of
+        :math:`e^{-i c_j h_j t}` with respect to :math:`c_j t`, i.e. a first-order
+        Trotter step appended to the circuit). The *generalized QGT* is the
+        connected QGT of all these tangents :math:`\tau_a`:
 
-    The bowtie method constructs auxiliary circuits (bowties) for each parameter
-    and observable term, focusing computation only on relevant qubits determined
-    by light-cone analysis. This significantly reduces computational cost for
-    large quantum circuits.
+        .. math::
+
+            \tilde G_{ab} = \langle\tau_a|\tau_b\rangle
+                - \langle\tau_a|\psi\rangle\langle\psi|\tau_b\rangle,
+
+        a complex Hermitian matrix of shape ``(N + M, N + M)`` with ``N`` circuit
+        parameters and ``M`` non-identity Hamiltonian terms, ordered like
+        ``qc.parameters`` and then the terms of ``hamiltonian``. Its blocks give:
+
+        * QGT: :math:`G = \tilde G_{:N,:N}`. Its real part is the Fubini-Study
+          metric (the matrix of McLachlan's principle), its imaginary part the Berry
+          curvature. Rotations follow Qiskit's convention :math:`e^{-i\theta P/2}`,
+          so this matches ``qiskit_algorithms.gradients.ReverseQGT``.
+        * McLachlan gradients :math:`\tilde G_{:N,N:}\,c`: its real part is the
+          real-time vector :math:`b_i = \mathrm{Im}(\langle\partial_i\psi|H|\psi\rangle
+          - \langle\partial_i\psi|\psi\rangle E)`, its imaginary part the
+          imaginary-time vector :math:`b_i = -\mathrm{Re}(\langle\partial_i\psi|H|\psi\rangle
+          - \langle\partial_i\psi|\psi\rangle E)`, which equals
+          :math:`-\tfrac12\,\partial_i E` for Hermitian :math:`H`.
+        * Variance: :math:`\mathrm{Var}[H] = c^\dagger \tilde G_{N:,N:}\, c`.
+
+        McLachlan's principle then reads :math:`\mathrm{Re}(G)\,\dot\theta = b`.
+        Identity terms of the Hamiltonian have no tangent; they only shift the energy.
 
     Attributes:
         qc: The parameterized quantum circuit.
-        obs: Observable as a SparsePauliOp for energy/gradient computation.
-        phase_fix: Whether phase fixing is enabled.
-        pbar: Progress bar verbosity level (0=off, 1=minimal, 2=detailed).
-        accelerator: Device for simulation ("CPU" or "GPU").
-        VarQITE_gradient: If True, computes real gradients (VarQITE style);
-            if False, computes imaginary gradients.
-        simulator: Qiskit Aer statevector simulator instance.
-        bowties: List of all bowtie circuits (parameters + observables).
-        active_qubits: Tuple of active qubit indices for each bowtie.
-        non_zero_indices: List of (i,j) index pairs with non-zero overlaps.
-        slices: Precomputed slice objects for efficient tensor indexing.
-
-    Example:
-        >>> qc = QuantumCircuit(4)
-        >>> # ... build parameterized circuit ...
-        >>> obs = SparsePauliOp.from_list([("ZIII", 1.0)])
-        >>> bowtie = BowtieQGT(qc, obs, phase_fix=True, pbar=1)
-        >>> params = {p: 0.5 for p in qc.parameters}
-        >>> gen_qgt, energy = bowtie.get_derivatives(params)
+        hamiltonian: The Hamiltonian passed at construction.
+        coeffs: Coefficients of the non-identity Hamiltonian terms, in bowtie order.
+        energy_offset: Sum of the coefficients of identity terms.
+        simulator: Aer simulator that runs the bowtie circuits.
+        verbosity: Progress reporting level, see :meth:`__init__`.
+        bowties: Bowtie circuits, parameters first and then Hamiltonian terms.
+        active_qubits: Qubits each bowtie acts on.
+        non_zero_indices: ``(i, j)`` pairs, ``i >= j``, whose bowties share qubits.
+            Every other entry of the generalized QGT is exactly zero.
+        slices: Precomputed tensor slices for each pair in ``non_zero_indices``.
+        last_timings: Seconds spent in the last :meth:`evaluate` call, with keys
+            ``"simulation"`` and ``"assembly"``.
     """
 
     def __init__(
         self,
         qc: QuantumCircuit,
-        obs: SparsePauliOp,
-        phase_fix: bool = True,
-        pbar: int = 0,
-        verbose_init: bool = False,
-        accelerator: str = "CPU",
-        compute_variance: bool = False,
-        VarQITE_gradient: bool = False,
+        hamiltonian: SparsePauliOp,
+        simulator: AerSimulator | None = None,
+        verbosity: int = 0,
     ):
-        """Initialize the BowtieQGT calculator.
+        """Build and transpile the bowtie circuits.
 
         Args:
-            qc: Parameterized quantum circuit to analyze.
-            obs: Observable as SparsePauliOp for computing energy and gradients.
-            phase_fix: If True, applies phase correction.
-                Recommended for most cases. Default: True.
-            pbar: Progress bar verbosity level:
-                - 0: No progress bars
-                - 1: Show main computation progress
-                - 2: Show detailed progress including QGT computation
-                Default: 0.
-            verbose_init: If True, prints distribution statistics of bowtie
-                circuit sizes during initialization. Default: False.
-            accelerator: Simulation device, either "CPU" or "GPU". GPU requires
-                appropriate Qiskit Aer GPU support. Default: "CPU".
-            VarQITE_gradient: If True, computes real-time gradients (VarQITE);
-                if False, computes imaginary-time gradients. Default: False.
+            qc: Parameterized circuit. Every parameter must be the bare angle of
+                exactly one ``rx``, ``ry``, ``rz``, ``rxx``, ``ryy`` or ``rzz`` gate.
+            hamiltonian: Hamiltonian as a ``SparsePauliOp``. Identity terms are
+                allowed and only shift the energy.
+            simulator: Noiseless statevector ``AerSimulator`` used to run the
+                bowties. Defaults to ``AerSimulator(method="statevector")``. Pass your
+                own to pick the device, precision or parallelism, e.g.
+                ``AerSimulator(method="statevector", device="GPU")`` or
+                ``AerSimulator(method="statevector", max_parallel_threads=8)``.
+            verbosity: 0 is silent. 1 shows progress bars while building the
+                bowties and prints the distribution of light-cone widths. 2 also
+                reports progress and timings on every :meth:`evaluate` call.
 
         Raises:
-            ValueError: If the circuit uses parameter expressions, unsupported
-                parameterized gates, or the same parameter in more than one gate.
+            ValueError: If the circuit is not supported (see
+                :func:`~bowtie_qgt.bowtie_circuits.validate_circuit`) or the simulator
+                is not a noiseless statevector simulator.
 
-        Note:
-            Initialization performs the following steps:
-            1. Constructs bowtie circuits for each parameter
-            2. Constructs bowtie circuits for each observable term
-            3. Identifies active qubits for each bowtie
-            4. Transpiles all circuits for the target simulator
-            5. Precomputes non-zero overlap indices and slice objects
+        Warns:
+            UserWarning: If the Hamiltonian is a multiple of the identity.
         """
         validate_circuit(qc)
         self.qc = qc
-        self.VarQITE_gradient = VarQITE_gradient
-        self.obs = obs
-        self.pbar = pbar
-        self.phase_fix = phase_fix
-        self.accelerator = accelerator
-        self.compute_variance = compute_variance
-        self.simulator = AerSimulator(method="statevector", device=accelerator)
-        exec = ThreadPoolExecutor(max_workers=10)
-        self.simulator.set_options(executor=exec)
+        self.hamiltonian = hamiltonian
+        self.verbosity = verbosity
+        self.simulator = simulator or AerSimulator(method="statevector")
+        if self.simulator.options.method != "statevector" or self.simulator.options.noise_model:
+            raise ValueError(
+                "The simulator must be a noiseless AerSimulator with method='statevector'."
+            )
+        self.last_timings: dict[str, float] = {}
+        show_progress = verbosity >= 1
+
+        terms = hamiltonian.to_sparse_list()
+        self.energy_offset = sum(coeff for term, _, coeff in terms if not term)
+        terms = [(term, indices, coeff) for term, indices, coeff in terms if term]
+        if not terms:
+            warnings.warn(
+                "Trivial Hamiltonian: it is a multiple of the identity, so its gradient "
+                "and variance vanish and the bowtie method has nothing to compute.",
+                stacklevel=2,
+            )
+        self.coeffs = np.array([coeff for _, _, coeff in terms], dtype=complex)
+
         dag = circuit_to_dag(qc)
+        parameter_bowties = [
+            remove_idle_qubits(parameter_bowtie(copy(dag), p))
+            for p in tqdm(qc.parameters, "Parameter bowties", disable=not show_progress)
+        ]
+        hamiltonian_bowties = [
+            remove_idle_qubits(observable_bowtie(qc, term, indices))
+            for term, indices, _ in tqdm(terms, "Hamiltonian bowties", disable=not show_progress)
+        ]
+        if show_progress:
+            for name, bowties in [
+                ("Parameter", parameter_bowties),
+                ("Hamiltonian", hamiltonian_bowties),
+            ]:
+                widths = Counter(len(active) for _, active in bowties)
+                print(f"{name} bowtie widths (qubits: count): {dict(sorted(widths.items()))}")
 
-        parameter_bowties, parameter_active_qubits = zip(
-            *[
-                remove_idle_qwires(parameter_bowtie(copy(dag), p))
-                for p in tqdm(
-                    qc.parameters,
-                    "Getting Parameter bowties",
-                    disable=(self.pbar <= 0),
-                )
-            ]
-        )
-
-        if verbose_init:
-            print(
-                f"""Parameter bowties are distributed as:
-            {dict(sorted(Counter([len(aq) for aq in parameter_active_qubits]).items()))}
-            """
-            )
-
-        observable_bowties, observable_active_qubits = zip(
-            *[
-                remove_idle_qwires(observable_bowtie(qc, term, indices))
-                for term, indices, _ in tqdm(
-                    obs.to_sparse_list(),
-                    "Getting observable bowties",
-                    disable=(self.pbar <= 0),
-                )
-            ]
-        )
-        if verbose_init:
-            print(
-                f"""Observable bowties are distributed as:
-            {dict(sorted(Counter([len(aq) for aq in observable_active_qubits]).items()))} """
-            )
-
-        self.bowties = parameter_bowties + observable_bowties
-        self.active_qubits = parameter_active_qubits + observable_active_qubits
-
-        for bw in self.bowties:
+        bowties = parameter_bowties + hamiltonian_bowties
+        self.active_qubits = [active for _, active in bowties]
+        for bw, _ in bowties:
             bw.save_statevector()
         # Lower any gates Aer cannot run natively (e.g. high-level library gates).
         self.bowties = [
             transpile(bw, self.simulator)
-            for bw in tqdm(self.bowties, "Transpiling Circuits", disable=(self.pbar <= 0))
+            for bw, _ in tqdm(bowties, "Transpiling bowties", disable=not show_progress)
         ]
 
+        # Bowties on disjoint qubits have a vanishing connected overlap, so skip them.
         self.non_zero_indices = [
             (i, j)
             for i, j in product(range(len(self.active_qubits)), repeat=2)
@@ -317,201 +288,136 @@ class BowtieQGT:
             )
             for i, j in self.non_zero_indices
         ]
+        # Parameter tangents are -i/2 times their bowtie state (Qiskit rotations are
+        # exp(-i θ P / 2)); Hamiltonian tangents are -i times theirs. The phases cancel
+        # in every overlap, leaving a real rescaling.
+        self._scale = np.concatenate([np.full(qc.num_parameters, 0.5), np.ones(len(terms))])
 
-    def get_derivatives(self, parameter_dict: dict[Parameter, float], tracking_time: bool = False):
-        """Compute the generalized QGT matrix and energy expectation value.
-
-        This is the main computation method that evaluates all bowtie circuits
-        at the given parameter values and constructs the generalized QGT matrix.
-        The matrix structure is:
-
-        ```
-        ┌─────────────┬──────────────┐
-        │     QGT     │   Gradient   │
-        │  (NxN)      │   (NxM)      │
-        ├─────────────┼──────────────┤
-        │  Gradient†  │   Variance   │
-        │  (MxN)      │   (MxM)      │
-        └─────────────┴──────────────┘
-        ```
-
-        where N = number of parameters, M = number of observable terms.
-
-
+    def evaluate(
+        self, parameter_values: Mapping[Parameter, float] | Sequence[float]
+    ) -> tuple[np.ndarray, float | complex]:
+        r"""Compute the generalized QGT and the energy at the given parameters.
 
         Args:
-            parameter_dict: Dictionary mapping circuit Parameters to their
-                numerical values. Every circuit parameter must be bound.
-            tracking_time: If True, returns timing information for profiling.
-                Default: False.
+            parameter_values: Values for every circuit parameter, either as a
+                sequence ordered like ``qc.parameters`` or as any mapping that
+                ``QuantumCircuit.assign_parameters`` accepts (``Parameter``,
+                ``ParameterVector`` or parameter-name keys).
 
         Returns:
-            If tracking_time is False:
-                tuple: (gen_qgt, energy) where:
-                    - gen_qgt: Complex numpy array of shape (N+M, N+M) containing
-                      the generalized QGT matrix
-                    - energy: Complex number representing the energy expectation
-                      value ⟨ψ|H|ψ⟩
+            ``(generalized_qgt, energy)``. ``generalized_qgt`` is the complex
+            ``(N + M, N + M)`` matrix described in :class:`BowtieQGT`; pass it to the
+            ``extract_*`` methods. ``energy`` is :math:`\langle\psi|H|\psi\rangle`,
+            a float when the Hamiltonian is Hermitian (real coefficients).
 
-            If tracking_time is True:
-                tuple: ((gen_qgt, energy), (time_simulation, time_qgt)) where:
-                    - time_simulation: Time in seconds for statevector computation
-                    - time_qgt: Time in seconds for QGT matrix assembly
-
-        Note:
-            The generalized QGT is computed as:
-            G_ij = Re[⟨∂_i ψ|∂_j ψ⟩ - ⟨∂_i ψ|ψ⟩⟨ψ|∂_j ψ⟩] / 4
-
-            Gradient entries include appropriate factors of -i for imaginary
-            time evolution when VarQITE_gradient=False.
+        Raises:
+            ValueError: If a circuit parameter has no value.
         """
-        # Precompute the tensors for QGT and gradient
-        bound_circuits = [bw.assign_parameters(parameter_dict, strict=False) for bw in self.bowties]
+        if not isinstance(parameter_values, Mapping):
+            parameter_values = list(parameter_values)
+            if len(parameter_values) != self.qc.num_parameters:
+                raise ValueError(
+                    f"Expected {self.qc.num_parameters} parameter values, "
+                    f"got {len(parameter_values)}."
+                )
+        # Let Qiskit resolve the keys (Parameter, ParameterVector, names) once.
+        missing = self.qc.assign_parameters(parameter_values, strict=False).parameters
+        if missing:
+            raise ValueError(f"Missing values for parameters: {[p.name for p in missing]}")
+        if not isinstance(parameter_values, Mapping):
+            parameter_values = dict(zip(self.qc.parameters, parameter_values))
 
-        timeA = time()
-        computed_states = self.simulator.run(bound_circuits).result().results
-        statevectors = [result.data.statevector for result in computed_states]
-        timeB = time()
-        if self.pbar > 0:
-            print(f"It took {timeB - timeA} to compute the statevectors")
-
+        start = perf_counter()
+        bound = [bw.assign_parameters(parameter_values, strict=False) for bw in self.bowties]
+        results = self.simulator.run(bound).result().results if bound else []
         # Reshaping the statevectors allows for faster computation of sparse overlaps
         tensors = [
-            np.reshape(sv.data, [2] * len(active_qubits))
-            for sv, active_qubits in zip(statevectors, self.active_qubits)
+            np.reshape(result.data.statevector.data, [2] * len(active))
+            for result, active in zip(results, self.active_qubits)
         ]
-        # Compute QGT
-        gen_qgt = np.zeros([len(self.bowties)] * 2, dtype=complex)
-        qgt_pbar = tqdm(
-            list(zip(self.non_zero_indices, self.slices)), "computing qgt", disable=(self.pbar <= 1)
+        simulated = perf_counter()
+
+        generalized_qgt = np.zeros([len(self.bowties)] * 2, dtype=complex)
+        pairs = tqdm(
+            list(zip(self.non_zero_indices, self.slices)),
+            "Generalized QGT",
+            disable=self.verbosity < 2,
         )
-        qgt_entries = [
-            tensor_phase_fix(tensors[i], sliceab, tensors[j], slicebc, self.phase_fix)
-            for (i, j), (sliceab, slicebc) in qgt_pbar
-        ]
+        for (i, j), (slice_i, slice_j) in pairs:
+            generalized_qgt[i, j] = connected_overlap(tensors[i], slice_i, tensors[j], slice_j)
+        # Only the lower triangle was computed; fill the upper one by Hermiticity.
+        generalized_qgt += np.tril(generalized_qgt, -1).conj().T
+        generalized_qgt *= np.outer(self._scale, self._scale)
 
-        # We need to add a phase of -1.0j if the entry is part of the gradient and we
-        # are computing the imaginary gradient.
-        for qgt_entry, indices in zip(qgt_entries, self.non_zero_indices):
-            gen_qgt[*indices] = qgt_entry
-            if indices[0] >= self.qc.num_parameters:
-                gen_qgt[*indices] *= (-1.0j) ** self.VarQITE_gradient
-                coeff_index = indices[0] - self.qc.num_parameters
-                gen_qgt[*indices] *= self.obs.coeffs[coeff_index]
-            if indices[1] >= self.qc.num_parameters:
-                gen_qgt[*indices] *= (-1.0j) ** self.VarQITE_gradient
-                coeff_index = indices[1] - self.qc.num_parameters
-                gen_qgt[*indices] *= self.obs.coeffs[coeff_index]
+        n = self.qc.num_parameters
+        energy = self.energy_offset + sum(zeroth(t) * c for t, c in zip(tensors[n:], self.coeffs))
+        if np.allclose(self.coeffs.imag, 0) and np.isclose(np.imag(self.energy_offset), 0):
+            energy = float(np.real(energy))
+        self.last_timings = {
+            "simulation": simulated - start,
+            "assembly": perf_counter() - simulated,
+        }
+        if self.verbosity >= 2:
+            print(
+                f"Simulation {self.last_timings['simulation']:.3f}s, "
+                f"assembly {self.last_timings['assembly']:.3f}s"
+            )
+        return generalized_qgt, energy
 
-        # We need to reshape the generalized qgt (we only computed the upper diagonal)
-        gen_qgt += np.triu(gen_qgt.conj().T, 1)
-        gen_qgt /= 4
-
-        energy = sum(
-            [
-                zeroth(osv) * coeff
-                for osv, coeff in zip(
-                    tensors[self.qc.num_parameters :],
-                    self.obs.coeffs,
-                )
-            ]
-        )
-        timeC = time()
-        if tracking_time:
-            return ((gen_qgt, energy), (timeB - timeA, timeC - timeB))
-        return gen_qgt, energy
-
-    def extract_qgt(self, gen_qgt: np.ndarray):
-        """Extract the QGT block from the generalized QGT matrix.
-
-        Extracts the upper-left NxN block containing the Quantum Geometric
-        Tensor (metric tensor) for the parameter space.
+    def extract_qgt(self, generalized_qgt: np.ndarray, part: str = "real") -> np.ndarray:
+        """Extract the ``(N, N)`` QGT block.
 
         Args:
-            gen_qgt: Generalized QGT matrix of shape (N+M, N+M) returned by
-                :meth:`get_derivatives`.
+            generalized_qgt: Matrix returned by :meth:`evaluate`.
+            part: ``"real"`` (default) for the Fubini-Study metric, which is what
+                McLachlan's variational principle uses for both real and imaginary
+                time. ``"imag"`` for the Berry curvature, ``"complex"`` for the full
+                QGT, as used by other variational principles.
 
         Returns:
-            Complex numpy array of shape (N, N) where N is the number of
-            circuit parameters. This is the QGT matrix G_ij = ⟨∂_i ψ|∂_j ψ⟩.
-
-        Example:
-            >>> gen_qgt, energy = bowtie.get_derivatives(params)
-            >>> qgt = bowtie.extract_qgt(gen_qgt)
-            >>> print(qgt.shape)  # (num_parameters, num_parameters)
+            The requested part of the QGT.
         """
-        return gen_qgt[: self.qc.num_parameters, : self.qc.num_parameters]
+        qgt = generalized_qgt[: self.qc.num_parameters, : self.qc.num_parameters]
+        return _part(qgt, part)
 
-    def extract_gradient(self, gen_qgt: np.ndarray):
-        """Extract the energy gradient from the generalized QGT matrix.
-
-        Extracts and processes the gradient block to compute ∂E/∂θ_i for each
-        parameter θ_i. The gradient is computed by summing over observable terms
-        with appropriate normalization and sign conventions.
+    def extract_gradient(self, generalized_qgt: np.ndarray, which: str) -> np.ndarray:
+        r"""Extract McLachlan's right-hand side ``b``, so that ``Re(G) θ̇ = b``.
 
         Args:
-            gen_qgt: Generalized QGT matrix of shape (N+M, N+M) returned by
-                :meth:`get_derivatives`.
+            generalized_qgt: Matrix returned by :meth:`evaluate`.
+            which: ``"real_time"`` for :math:`e^{-iHt}` (VarQRTE) or ``"imag_time"``
+                for :math:`e^{-H\tau}` (VarQITE). For Hermitian ``H`` the
+                imaginary-time vector is :math:`-\tfrac12\nabla_\theta E`.
 
         Returns:
-            Complex numpy array of shape (N,) containing the gradient components
-            ∂E/∂θ_i. For VarQITE_gradient=True, returns real gradients; for
-            VarQITE_gradient=False, returns imaginary gradients with appropriate
-            sign convention.
-
-        Note:
-            The factor of 4 accounts for the 1/4 normalization in the QGT
-            computation. The sign convention depends on whether real or imaginary
-            time evolution is being used.
-
-        Example:
-            >>> gen_qgt, energy = bowtie.get_derivatives(params)
-            >>> gradient = bowtie.extract_gradient(gen_qgt)
-            >>> print(gradient.shape)  # (num_parameters,)
+            Real array of shape ``(N,)``.
         """
-        gradient_sector = gen_qgt[: self.qc.num_parameters, self.qc.num_parameters :]
-        return 4 * np.sum(gradient_sector, axis=1) * (-1.0) ** (not self.VarQITE_gradient)
+        n = self.qc.num_parameters
+        mixed = generalized_qgt[:n, n:] @ self.coeffs
+        if which == "real_time":
+            return mixed.real
+        if which == "imag_time":
+            return mixed.imag
+        raise ValueError(f"which must be 'real_time' or 'imag_time', got {which!r}")
 
-    def extract_variance(self, gen_qgt: np.ndarray, energy: float | None = None):
-        """Extract the observable variance from the generalized QGT matrix.
-
-        Extracts the lower-right MxM block and computes the total variance
-        Var(H) = ⟨H²⟩ - ⟨H⟩². The variance sector contains ⟨H²⟩ (with phase
-        correction when phase_fix=True), so we must subtract ⟨H⟩² (energy²)
-        to obtain the actual variance when the energy parameter is provided.
+    def extract_variance(self, generalized_qgt: np.ndarray) -> float:
+        r"""Extract the energy variance :math:`\langle H^2\rangle - \langle H\rangle^2`.
 
         Args:
-            gen_qgt: Generalized QGT matrix of shape (N+M, N+M) returned by
-                :meth:`get_derivatives`.
-            energy: The expectation value ⟨H⟩ of the observable. When provided,
-                the method returns Var(H) = ⟨H²⟩ - ⟨H⟩². When not provided,
-                returns ⟨H²⟩ (useful for backward compatibility).
+            generalized_qgt: Matrix returned by :meth:`evaluate`.
 
         Returns:
-            Complex number representing the variance of the observable when
-            energy is provided, or ⟨H²⟩ when energy is not provided. For
-            Hermitian observables, the variance should be real and non-negative.
-
-        Example:
-            >>> # Compute variance (recommended)
-            >>> gen_qgt, energy = bowtie.get_derivatives(params)
-            >>> variance = bowtie.extract_variance(gen_qgt, energy).real
-            >>>
-            >>> # Backward compatibility: get ⟨H²⟩ without energy
-            >>> gen_qgt, _ = bowtie.get_derivatives(params)
-            >>> h2_expectation = bowtie.extract_variance(gen_qgt).real
+            The variance. It vanishes exactly on eigenstates of ``H``.
         """
-        var_sector = gen_qgt[self.qc.num_parameters :, self.qc.num_parameters :]
+        n = self.qc.num_parameters
+        return float(np.real(self.coeffs.conj() @ generalized_qgt[n:, n:] @ self.coeffs))
 
-        # The variance sector was divided by 4 along with the rest of gen_qgt,
-        # but variance should not be divided by 4, so we multiply back
-        variance_sum = (-1) ** (self.VarQITE_gradient) * np.sum(var_sector.real) * 4
 
-        # The variance sector contains ⟨H²⟩ (with phase correction applied if phase_fix=True)
-        # To get Var(H) = ⟨H²⟩ - ⟨H⟩², we need to subtract energy² when energy is provided
-        if energy is not None and not self.phase_fix:
-            return variance_sum - energy**2
-        if energy is None and not self.phase_fix:
-            raise ValueError("Energy must be provided when phase_fix=False")
-        else:
-            return variance_sum
+def _part(matrix: np.ndarray, part: str) -> np.ndarray:
+    if part == "real":
+        return matrix.real
+    if part == "imag":
+        return matrix.imag
+    if part == "complex":
+        return matrix
+    raise ValueError(f"part must be 'real', 'imag' or 'complex', got {part!r}")

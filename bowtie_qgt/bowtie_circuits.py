@@ -8,7 +8,7 @@ bowtie circuits, which are essential for quantum geometric tensor calculations.
 """
 
 from qiskit import QuantumCircuit
-from qiskit.circuit import Gate, Parameter, ParameterExpression
+from qiskit.circuit import ControlFlowOp, Gate, Parameter, ParameterExpression
 from qiskit.circuit.commutation_library import SessionCommutationChecker as scc
 from qiskit.circuit.library import PauliGate, XGate, YGate, ZGate
 from qiskit.converters import circuit_to_dag, dag_to_circuit
@@ -38,13 +38,26 @@ def validate_circuit(qc: QuantumCircuit) -> None:
 
     Raises:
         ValueError: If a gate takes a parameter expression (e.g. ``2*θ``), if a
-            parameterized gate is not a supported Pauli rotation, or if a
-            parameter appears in more than one gate.
+            parameterized gate is not a supported Pauli rotation, if a parameter
+            appears in more than one gate, or if the circuit has classical bits,
+            control flow or a parameterized global phase.
     """
+    if qc.num_clbits:
+        raise ValueError(
+            "Circuits with classical bits are not supported. Remove measurements and "
+            "classical registers (e.g. qc.remove_final_measurements())."
+        )
+    if isinstance(qc.global_phase, ParameterExpression):
+        raise ValueError("A parameterized global phase is not supported.")
     supported = ", ".join(_rotation_gates)
     seen = set()
     for instruction in qc.data:
         op = instruction.operation
+        if isinstance(op, ControlFlowOp):
+            raise ValueError(
+                f"Control-flow operation '{op.name}' is not supported. Flatten the circuit "
+                "into plain gates first."
+            )
         for param in op.params:
             if not isinstance(param, ParameterExpression):
                 continue
@@ -124,7 +137,7 @@ def parameter_bowtie(dag: DAGCircuit, target_parameter: Parameter) -> QuantumCir
 
     Returns:
         The full parameter bowtie circuit, which may contain some idle quantum
-        registers that can be removed using `remove_idle_qwires`.
+        registers that can be removed using `remove_idle_qubits`.
 
     Raises:
         ValueError: If the target parameter is not found in any gate in the circuit.
@@ -174,7 +187,7 @@ def observable_bowtie(qc: QuantumCircuit, bit_terms: str, indices: list[int]) ->
 
     Returns:
         The full observable bowtie circuit, which may contain some idle quantum
-        registers that can be removed using `remove_idle_qwires`.
+        registers that can be removed using `remove_idle_qubits`.
 
     Example:
         >>> from qiskit import QuantumCircuit
@@ -194,7 +207,7 @@ def observable_bowtie(qc: QuantumCircuit, bit_terms: str, indices: list[int]) ->
     return bowtie_circuit
 
 
-def remove_idle_qwires(qc: QuantumCircuit) -> tuple[QuantumCircuit, tuple[int, ...]]:
+def remove_idle_qubits(qc: QuantumCircuit) -> tuple[QuantumCircuit, tuple[int, ...]]:
     """Remove idle quantum wires from a circuit.
 
     This function identifies and removes quantum wires (qubits) that have no
@@ -215,7 +228,7 @@ def remove_idle_qwires(qc: QuantumCircuit) -> tuple[QuantumCircuit, tuple[int, .
         >>> qc = QuantumCircuit(5)
         >>> qc.h(0)
         >>> qc.cx(0, 2)
-        >>> reduced_qc, active_indices = remove_idle_qwires(qc)
+        >>> reduced_qc, active_indices = remove_idle_qubits(qc)
         >>> print(f"Active qubits: {active_indices}")
         Active qubits: (0, 2)
         >>> print(f"Reduced circuit has {reduced_qc.num_qubits} qubits")

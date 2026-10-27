@@ -35,60 +35,46 @@ from qiskit.circuit import ParameterVector
 from qiskit.quantum_info import SparsePauliOp
 from bowtie_qgt.bowtieqgt import BowtieQGT
 
-# Create a parameterized quantum circuit
 num_qubits = 4
 qc = QuantumCircuit(num_qubits)
-params = ParameterVector('θ', 8)
-
-# Build a simple ansatz
+params = ParameterVector("θ", 8)
 for i in range(num_qubits):
     qc.ry(params[i], i)
-
 for i in range(num_qubits - 1):
     qc.cx(i, i + 1)
-
 for i in range(num_qubits):
     qc.ry(params[i + 4], i)
 
-# Define a Hamiltonian observable
-obs = SparsePauliOp.from_list([
-    ("ZIII", -1.0),
-    ("IZII", -1.0),
-    ("IIZI", -1.0),
-    ("IIIZ", -1.0),
-])
+hamiltonian = SparsePauliOp.from_list(
+    [("ZIII", -1.0), ("IZII", -1.0), ("IIZI", -1.0), ("IIIZ", -1.0)]
+)
 
-# Initialize BowtieQGT with phase fixing
-bowtie = BowtieQGT(qc, obs, phase_fix=True)
+bowtie = BowtieQGT(qc, hamiltonian)
+generalized_qgt, energy = bowtie.evaluate([0.1] * qc.num_parameters)
 
-# Set parameter values
-param_values = {p: 0.1 for p in qc.parameters}
-
-# Compute generalized QGT and energy
-gen_qgt, energy = bowtie.get_derivatives(param_values)
-
-# Extract components
-qgt = bowtie.extract_qgt(gen_qgt)
-gradient = bowtie.extract_gradient(gen_qgt)
-variance = bowtie.extract_variance(gen_qgt, energy)
-
-print(f"Energy: {energy}")
-print(f"QGT shape: {qgt.shape}")
-print(f"Gradient: {gradient}")
+qgt = bowtie.extract_qgt(generalized_qgt)  # Re(QGT), the McLachlan metric
+b = bowtie.extract_gradient(generalized_qgt, which="real_time")  # or "imag_time"
+variance = bowtie.extract_variance(generalized_qgt)
 ```
+
+McLachlan's principle is then `qgt @ theta_dot = b`. The
+[Examples](https://MarcDrudis.github.io/BowtieQGT/examples.html) page runs VarQRTE and VarQITE
+on an Ising chain.
 
 ## What is the Quantum Geometric Tensor?
 
 The Quantum Geometric Tensor (QGT) is a fundamental object in quantum information that characterizes the geometry of the parameter space of a quantum state. For a parameterized quantum state |ψ(θ)⟩, the QGT is defined as:
 
 ```
-G_ij = Re[⟨∂_i ψ|∂_j ψ⟩ - ⟨∂_i ψ|ψ⟩⟨ψ|∂_j ψ⟩]
+G_ij = ⟨∂_i ψ|∂_j ψ⟩ - ⟨∂_i ψ|ψ⟩⟨ψ|∂_j ψ⟩
 ```
+
+Its real part is the Fubini-Study metric and its imaginary part the Berry curvature.
 
 The QGT is essential for:
 
 - **Variational Quantum Algorithms**: Natural gradient descent and quantum natural gradient optimization
-- **VarQITE**: Variational Quantum Imaginary Time Evolution
+- **VarQRTE / VarQITE**: Variational quantum real and imaginary time evolution
 - **Quantum Fisher Information**: Understanding parameter estimation precision
 - **Quantum Speed Limits**: Characterizing the rate of quantum evolution
 
@@ -104,37 +90,27 @@ This reduces the computational complexity from exponential in the total number o
 
 ## Advanced Features
 
-### GPU Acceleration
+### Choosing the Simulator
 
-Enable GPU acceleration for faster computation on large circuits:
+The bowties run on `AerSimulator(method="statevector")` by default. Pass your own to choose
+the device, precision or parallelism:
 
 ```python
-bowtie = BowtieQGT(qc, obs, accelerator="GPU")
+from qiskit_aer import AerSimulator
+
+bowtie = BowtieQGT(qc, hamiltonian, simulator=AerSimulator(method="statevector", device="GPU"))
 ```
 
 See the [Installation Guide](https://MarcDrudis.github.io/BowtieQGT/installation.html) for GPU setup instructions.
 
-### VarQITE Support
-
-For real-time evolution (VarQITE):
+### Real and Imaginary Time
 
 ```python
-bowtie = BowtieQGT(qc, obs, VarQITE_gradient=True)
+b_real = bowtie.extract_gradient(generalized_qgt, which="real_time")  # VarQRTE
+b_imag = bowtie.extract_gradient(generalized_qgt, which="imag_time")  # VarQITE, = -∇E/2
 ```
 
-For imaginary-time evolution:
-
-```python
-bowtie = BowtieQGT(qc, obs, VarQITE_gradient=False)
-```
-
-### Phase Fixing
-
-Phase fixing improves numerical stability by removing contributions from the |0...0⟩ state:
-
-```python
-bowtie = BowtieQGT(qc, obs, phase_fix=True)  # Recommended
-```
+Upgrading from 1.0? See [CHANGELOG.md](CHANGELOG.md) for the migration guide.
 
 ## Documentation
 
@@ -194,7 +170,7 @@ Pre-commit hooks automatically run these checks before each commit.
 - Qiskit 2.0+
 - Qiskit Aer
 - NumPy 2.0+
-- Additional dependencies: matplotlib, tqdm, qiskit-algorithms
+- tqdm
 
 ## License
 

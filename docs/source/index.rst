@@ -13,6 +13,7 @@ The bowtie approach leverages light-cone structures to reduce computational over
    quickstart
    api
    examples
+   changelog
 
 Key Features
 ------------
@@ -20,8 +21,8 @@ Key Features
 - **Sparse tensor operations** for efficient overlap computation
 - **Parallel statevector simulation** using Qiskit Aer
 - **Automatic identification** of active qubits per parameter/observable
-- **Phase fixing** for improved numerical stability
-- **GPU acceleration** support via Qiskit Aer
+- **McLachlan gradients** for real (VarQRTE) and imaginary (VarQITE) time evolution
+- **Any Aer statevector simulator**, including GPU
 
 Quick Example
 -------------
@@ -36,19 +37,12 @@ Quick Example
    qc = QuantumCircuit(4)
    # ... add parameterized gates ...
 
-   # Define an observable
-   obs = SparsePauliOp.from_list([("ZIII", 1.0), ("IZII", 1.0)])
+   hamiltonian = SparsePauliOp.from_list([("ZIII", 1.0), ("IZII", 1.0)])
+   bowtie = BowtieQGT(qc, hamiltonian)
 
-   # Initialize BowtieQGT
-   bowtie = BowtieQGT(qc, obs, phase_fix=True)
-
-   # Compute QGT and energy at parameter values
-   params = {p: 0.1 for p in qc.parameters}
-   gen_qgt, energy = bowtie.get_derivatives(params)
-
-   # Extract QGT and gradient
-   qgt = bowtie.extract_qgt(gen_qgt)
-   gradient = bowtie.extract_gradient(gen_qgt)
+   generalized_qgt, energy = bowtie.evaluate([0.1] * qc.num_parameters)
+   qgt = bowtie.extract_qgt(generalized_qgt)
+   b = bowtie.extract_gradient(generalized_qgt, which="real_time")
 
 Indices and tables
 ==================

@@ -35,6 +35,7 @@ Key Functions
 .. autosummary::
    :nosignatures:
 
+   bowtie_qgt.bowtie_circuits.validate_circuit
    bowtie_qgt.bowtie_circuits.parameter_bowtie
    bowtie_qgt.bowtie_circuits.observable_bowtie
-   bowtie_qgt.bowtie_circuits.remove_idle_qwires
+   bowtie_qgt.bowtie_circuits.remove_idle_qubits
