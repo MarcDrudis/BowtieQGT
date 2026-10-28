@@ -72,3 +72,12 @@ exclude_patterns = []
 
 html_theme = "sphinx_nefertiti"
 html_static_path = ["_static"]
+html_css_files = ["custom.css"]
+html_theme_options = {
+    "project_short": "BowtieQGT",  # shown instead of the full name on narrow screens
+    # The theme puts the logo in the header, just left of the project name.
+    "logo": "bowtie_logo.svg",
+    "logo_alt": "BowtieQGT logo",
+    "logo_width": 56,  # keeps the logo's 200:124 aspect ratio
+    "logo_height": 35,
+}

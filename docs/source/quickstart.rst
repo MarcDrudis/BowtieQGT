@@ -53,16 +53,48 @@ Identity terms in the Hamiltonian are allowed: they shift the energy and nothing
 Real and Imaginary Time
 -----------------------
 
+The same ``BowtieQGT`` object serves both. You only choose the direction when you extract
+the gradient:
+
+.. list-table::
+   :header-rows: 1
+   :stub-columns: 1
+
+   * -
+     - Real time (VarQRTE)
+     - Imaginary time (VarQITE)
+   * - Target
+     - :math:`|\psi(t)\rangle = e^{-iHt}|\psi_0\rangle`
+     - :math:`|\psi(\tau)\rangle \propto e^{-H\tau}|\psi_0\rangle`
+   * - Use
+     - Quantum dynamics
+     - Ground-state preparation
+   * - Call
+     - ``extract_gradient(g, which="real_time")``
+     - ``extract_gradient(g, which="imag_time")``
+   * - :math:`b_i`
+     - :math:`\mathrm{Im}(\langle\partial_i\psi|H|\psi\rangle - \langle\partial_i\psi|\psi\rangle E)`
+     - :math:`-\mathrm{Re}\langle\partial_i\psi|H|\psi\rangle = -\tfrac12\partial_i E`
+
 McLachlan's variational principle gives :math:`\mathrm{Re}(G)\,\dot\theta = b` in both
-directions; only ``b`` changes:
+cases. The QGT is the same; only :math:`b` changes:
 
 .. code-block:: python
 
-   b = bowtie.extract_gradient(generalized_qgt, which="real_time")  # e^{-iHt}, VarQRTE
-   b = bowtie.extract_gradient(generalized_qgt, which="imag_time")  # e^{-Hτ}, VarQITE
+   qgt = bowtie.extract_qgt(generalized_qgt)
 
-The imaginary-time vector is :math:`-\tfrac12\nabla_\theta E`. :doc:`examples` has a full
-VarQRTE and VarQITE run.
+   # Real time: follow e^{-iHt}
+   b = bowtie.extract_gradient(generalized_qgt, which="real_time")
+   theta_dot = np.linalg.solve(qgt + 1e-6 * np.eye(len(b)), b)
+
+   # Imaginary time: flow towards the ground state
+   b = bowtie.extract_gradient(generalized_qgt, which="imag_time")
+   theta_dot = np.linalg.solve(qgt + 1e-6 * np.eye(len(b)), b)
+
+The names refer to the evolution, not to the part of the matrix that is taken: the
+real-time gradient happens to be the real part of the mixed block of the generalized QGT,
+but in terms of the raw overlap :math:`\langle\partial_i\psi|H|\psi\rangle` it is the
+imaginary part. ``which=`` hides this bookkeeping. :doc:`examples` has a full run of both.
 
 Choosing the Simulator
 ----------------------
