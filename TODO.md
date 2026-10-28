@@ -29,7 +29,6 @@ Deferred items from the October 2026 review. Delete entries as they are done.
   exist. Either create it and write fragments, or drop towncrier and edit
   `CHANGELOG.md` directly.
 - Add a `.pre-commit-config.yaml` (the docs describe one).
-- CI runs only the docs build. Add a test job when ready.
 - Releases: `V1.0.0` and `v1.0` both point to commits that are not on `main`, so
   `setuptools_scm` reports `0.1.devN`. Tag the release commit on `main` as `v2.0.0`.
   Keep one tag style.
