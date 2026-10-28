@@ -4,16 +4,10 @@ This guide explains how to generate and maintain the API documentation for Bowti
 
 ## Prerequisites
 
-Ensure you have the documentation dependencies installed:
+Install the package with the `docs` extra (Sphinx, theme and extensions):
 
 ```bash
-uv sync --all-extras
-```
-
-Or install the dev dependency group:
-
-```bash
-uv pip install -e ".[dev]"
+uv pip install -e ".[docs]"
 ```
 
 ## Building the Documentation
@@ -68,7 +62,20 @@ docs/source/
 ├── index.rst                  # Documentation home page
 ├── installation.rst           # Installation guide
 ├── quickstart.rst            # Quick start guide
-└── examples.rst              # Usage examples
+├── examples.rst              # Usage examples (includes docs/examples/*.py)
+├── changelog.rst             # Renders CHANGELOG.md with myst-parser
+└── _static/                  # Logo, custom.css and the example plot
+```
+
+### The example plot
+
+`docs/source/_static/mclachlan_ising.png` is committed, not generated during the build: the
+script takes several minutes. After changing `docs/examples/mclachlan_ising.py`,
+regenerate it and commit the new image:
+
+```bash
+uv pip install -e ".[examples]"
+cd docs/source/_static && python ../../examples/mclachlan_ising.py
 ```
 
 ## How API Documentation Works
@@ -81,22 +88,24 @@ The API documentation is automatically generated from Python docstrings using Sp
 - **autosummary**: Generates summary tables of modules/classes/functions
 - **napoleon**: Parses Google and NumPy style docstrings
 - **viewcode**: Adds links to highlighted source code
-- **intersphinx**: Creates links to external documentation (Qiskit, NumPy, Python)
+- **intersphinx**: Creates links to external documentation (Qiskit, Qiskit Aer, NumPy, Python)
+- **myst_parser**: Parses Markdown, used to include `CHANGELOG.md`
 
 ### Adding New Modules
 
 To document a new module:
 
-1. Create a new `.rst` file in `docs/source/api/`:
+1. Create a new `.rst` file in `docs/source/api/`. `automodule` renders only the module
+   docstring; list each public object once with its own directive, so nothing is
+   documented twice:
 
 ```rst
 module_name
 ===========
 
 .. automodule:: bowtie_qgt.module_name
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autofunction:: bowtie_qgt.module_name.some_function
 ```
 
 2. Add it to the toctree in `docs/source/api.rst`:
@@ -173,20 +182,19 @@ If functions/classes don't appear in the docs:
 
 ### Warnings About Duplicate Objects
 
-These warnings occur when autosummary generates duplicate entries. They're generally harmless but can be suppressed by adjusting the RST files to avoid redundant autodoc directives.
+An object is documented twice, usually because it is listed both through an `automodule`
+with `:members:` and through its own `autofunction`/`autoclass`. Keep only one of the two.
 
 ## Continuous Integration
 
-The documentation build can be integrated into CI/CD pipelines:
+`.github/workflows/docs.yml` builds the docs on every pull request and deploys them to
+GitHub Pages on pushes to `main`. To reproduce its build locally:
 
 ```bash
-# In your CI script
-uv sync --all-extras
+uv pip install -e ".[docs]"
 cd docs
-uv run sphinx-build -W -b html source build/html
+make clean html
 ```
-
-The `-W` flag treats warnings as errors, ensuring documentation quality.
 
 ## Additional Resources
 

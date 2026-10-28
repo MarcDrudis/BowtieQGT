@@ -42,7 +42,16 @@ dev = [
   "scipy",      # ishermitian in tests
   "ruff",       # Formatter and linter
   "pre-commit", # Pre-commit hooks
-  "towncrier",  # Changelog management
+]
+docs = [
+  "sphinx>=9.0.4",
+  "sphinx-autodoc-typehints>=3.6.1",
+  "sphinx-nefertiti>=0.9.8",
+  "myst-parser>=4", # Renders CHANGELOG.md inside the docs
+]
+examples = [
+  "matplotlib",  # docs/examples/mclachlan_ising.py
+  "scipy",
 ]
 
 [tool.ruff]
@@ -52,17 +61,3 @@ target-version = "py311"
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "F401"] # Ignore unused import in init files
-
-[tool.towncrier]
-directory = "changelog.d"
-filename = "CHANGELOG.md"
-template = "towncrier:default"
-package = "bowtie_qgt"
-
-[dependency-groups]
-dev = [
-  "furo>=2025.12.19",
-  "sphinx>=9.0.4",
-  "sphinx-autodoc-typehints>=3.6.1",
-  "sphinx-nefertiti>=0.9.8",
-]

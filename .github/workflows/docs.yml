@@ -37,14 +37,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
-          pip install sphinx sphinx-autodoc-typehints sphinx-nefertiti
+          pip install -e ".[docs]"
 
       - name: Build documentation
         run: |
           cd docs
           make clean
-          make html
+          make html SPHINXOPTS="-W --keep-going"  # fail on any docs warning
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

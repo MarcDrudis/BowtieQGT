@@ -54,26 +54,28 @@ def get_slice(AB: tuple[int], BC: tuple[int]):
 
     Computes the slice to apply to statevector ψ_AB when computing its overlap
     with ψ_BC. The Hilbert space is decomposed into three regions:
-    - Region A: qubits where only ψ_AB has support (projected to |0⟩)
-    - Region B: qubits where both ψ_AB and ψ_BC have support (overlap computed)
-    - Region C: qubits where only ψ_BC has support (projected to |0⟩)
 
-    For qubits in region B (intersection of AB and BC), the slice uses `slice(None)`
+    - Region A: qubits where only ψ_AB has support (projected to ``|0⟩``)
+    - Region B: qubits where both ψ_AB and ψ_BC have support (overlap computed)
+    - Region C: qubits where only ψ_BC has support (projected to ``|0⟩``)
+
+    For qubits in region B (intersection of AB and BC), the slice uses ``slice(None)``
     to keep all amplitudes. For qubits in region A (in AB but not in BC), the slice
-    uses index 0 to project onto |0⟩.
+    uses index 0 to project onto ``|0⟩``.
 
     Args:
         AB: Tuple of active qubit indices for statevector ψ_AB.
         BC: Tuple of active qubit indices for statevector ψ_BC.
 
     Returns:
-        List of slice objects or integers for indexing the ψ_AB tensor:
-        - `slice(None)` for qubits in the overlap region B (qubits in both AB and BC)
-        - `0` for qubits in region A (qubits in AB but not in BC)
-        The list is in reversed order to match tensor dimension ordering.
+        List of slice objects or integers for indexing the ψ_AB tensor, in
+        reversed order to match tensor dimension ordering:
+
+        - ``slice(None)`` for qubits in the overlap region B (in both AB and BC)
+        - ``0`` for qubits in region A (in AB but not in BC)
 
     Note:
-        When precomputing slices for overlap ⟨ψ_AB|ψ_BC⟩, both directions must be
+        When precomputing slices for overlap ``⟨ψ_AB|ψ_BC⟩``, both directions must be
         computed and stored: one slice for ψ_AB and one for ψ_BC, since the overlap
         is not symmetric when the active qubit sets differ.
 
@@ -88,16 +90,17 @@ def get_slice(AB: tuple[int], BC: tuple[int]):
 
 
 def sparse_overlap_tensors(svAB: np.ndarray, sliceab, svBC: np.ndarray, slicebc):
-    """Compute the overlap ⟨ψ_AB|ψ_BC⟩ between statevectors with different support.
+    """Compute the overlap ``⟨ψ_AB|ψ_BC⟩`` between statevectors with different support.
 
     Calculates the inner product between two statevectors by projecting them onto
     their common support region (region B). The Hilbert space is decomposed as:
-    - Region A: qubits where only ψ_AB has support → projected to |0⟩ in ψ_AB
-    - Region B: qubits where both have support → full overlap computed
-    - Region C: qubits where only ψ_BC has support → projected to |0⟩ in ψ_BC
 
-    The slices `sliceab` and `slicebc` project each statevector onto region B,
-    setting amplitudes in regions A and C to their |0⟩ components.
+    - Region A: qubits where only ψ_AB has support → projected to ``|0⟩`` in ψ_AB
+    - Region B: qubits where both have support → full overlap computed
+    - Region C: qubits where only ψ_BC has support → projected to ``|0⟩`` in ψ_BC
+
+    The slices ``sliceab`` and ``slicebc`` project each statevector onto region B,
+    setting amplitudes in regions A and C to their ``|0⟩`` components.
 
     Args:
         svAB: Statevector tensor ψ_AB reshaped to [2, 2, ..., 2] with dimensions
@@ -108,7 +111,7 @@ def sparse_overlap_tensors(svAB: np.ndarray, sliceab, svBC: np.ndarray, slicebc)
         slicebc: Slice for projecting ψ_BC onto region B.
 
     Returns:
-        Complex number representing the overlap ⟨ψ_AB|ψ_BC⟩ computed over the
+        Complex number representing the overlap ``⟨ψ_AB|ψ_BC⟩`` computed over the
         common support region B.
 
     Note:

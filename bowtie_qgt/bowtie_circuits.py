@@ -126,6 +126,7 @@ def parameter_bowtie(dag: DAGCircuit, target_parameter: Parameter) -> QuantumCir
     """Compute the auxiliary bowtie circuit for a given parameter.
 
     The bowtie circuit is constructed by:
+
     1. Finding the gate containing the target parameter
     2. Computing the light cone of that gate
     3. Sandwiching the generator of the rotation gate between the light cone
@@ -173,6 +174,7 @@ def observable_bowtie(qc: QuantumCircuit, bit_terms: str, indices: list[int]) ->
     """Compute the auxiliary bowtie circuit for a given observable.
 
     The bowtie circuit is constructed by:
+
     1. Computing the light cone of the observable
     2. Sandwiching the Pauli gate corresponding to the observable between
        the light cone circuit and its inverse
