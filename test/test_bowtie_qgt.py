@@ -422,8 +422,7 @@ class TestBowtieQGT(unittest.TestCase):
                     rtol=1e-5,
                     atol=1e-8,
                     err_msg=(
-                        "QGT imaginary part mismatch"
-                        f" (VarQITE={is_VarQITE}, phase_fix={phase_fix})",
+                        f"QGT imaginary part mismatch (VarQITE={is_VarQITE}, phase_fix={phase_fix})"
                     ),
                 )
 
@@ -489,8 +488,7 @@ class TestBowtieQGT(unittest.TestCase):
                     rtol=1e-5,
                     atol=1e-8,
                     err_msg=(
-                        "Gradient real part mismatch "
-                        f"(VarQITE={is_VarQITE}, phase_fix={phase_fix})",
+                        f"Gradient real part mismatch (VarQITE={is_VarQITE}, phase_fix={phase_fix})"
                     ),
                 )
 

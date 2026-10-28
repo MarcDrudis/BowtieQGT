@@ -60,7 +60,12 @@ from qiskit.quantum_info import SparsePauliOp
 from qiskit_aer import AerSimulator
 from tqdm import tqdm
 
-from bowtie_qgt.bowtie_circuits import observable_bowtie, parameter_bowtie, remove_idle_qwires
+from bowtie_qgt.bowtie_circuits import (
+    observable_bowtie,
+    parameter_bowtie,
+    remove_idle_qwires,
+    validate_circuit,
+)
 
 
 def zeroth(tensor: np.ndarray):
@@ -231,8 +236,8 @@ class BowtieQGT:
                 if False, computes imaginary-time gradients. Default: False.
 
         Raises:
-            ValueError: If a parameter is not found in the circuit during
-                bowtie construction.
+            ValueError: If the circuit uses parameter expressions, unsupported
+                parameterized gates, or the same parameter in more than one gate.
 
         Note:
             Initialization performs the following steps:
@@ -242,6 +247,7 @@ class BowtieQGT:
             4. Transpiles all circuits for the target simulator
             5. Precomputes non-zero overlap indices and slice objects
         """
+        validate_circuit(qc)
         self.qc = qc
         self.VarQITE_gradient = VarQITE_gradient
         self.obs = obs
@@ -267,7 +273,7 @@ class BowtieQGT:
 
         if verbose_init:
             print(
-                f"""Parameter bowties are ditributed as:
+                f"""Parameter bowties are distributed as:
             {dict(sorted(Counter([len(aq) for aq in parameter_active_qubits]).items()))}
             """
             )
@@ -284,16 +290,20 @@ class BowtieQGT:
         )
         if verbose_init:
             print(
-                f"""Observable bowties are ditributed as:
+                f"""Observable bowties are distributed as:
             {dict(sorted(Counter([len(aq) for aq in observable_active_qubits]).items()))} """
             )
 
         self.bowties = parameter_bowties + observable_bowties
         self.active_qubits = parameter_active_qubits + observable_active_qubits
 
-        for bw in tqdm(self.bowties, "Transpiling Circuits", disable=(self.pbar <= 0)):
+        for bw in self.bowties:
             bw.save_statevector()
-            bw = transpile(bw, self.simulator)
+        # Lower any gates Aer cannot run natively (e.g. high-level library gates).
+        self.bowties = [
+            transpile(bw, self.simulator)
+            for bw in tqdm(self.bowties, "Transpiling Circuits", disable=(self.pbar <= 0))
+        ]
 
         self.non_zero_indices = [
             (i, j)
@@ -331,8 +341,7 @@ class BowtieQGT:
 
         Args:
             parameter_dict: Dictionary mapping circuit Parameters to their
-                numerical values. Can be a subset of circuit parameters;
-                unspecified parameters remain symbolic.
+                numerical values. Every circuit parameter must be bound.
             tracking_time: If True, returns timing information for profiling.
                 Default: False.
 
@@ -420,7 +429,7 @@ class BowtieQGT:
 
         Args:
             gen_qgt: Generalized QGT matrix of shape (N+M, N+M) returned by
-                [`get_derivatives()`](bowtie_qgt/bowtieqgt.py:113).
+                :meth:`get_derivatives`.
 
         Returns:
             Complex numpy array of shape (N, N) where N is the number of
@@ -442,7 +451,7 @@ class BowtieQGT:
 
         Args:
             gen_qgt: Generalized QGT matrix of shape (N+M, N+M) returned by
-                [`get_derivatives()`](bowtie_qgt/bowtieqgt.py:113).
+                :meth:`get_derivatives`.
 
         Returns:
             Complex numpy array of shape (N,) containing the gradient components
@@ -473,7 +482,7 @@ class BowtieQGT:
 
         Args:
             gen_qgt: Generalized QGT matrix of shape (N+M, N+M) returned by
-                [`get_derivatives()`](bowtie_qgt/bowtieqgt.py:113).
+                :meth:`get_derivatives`.
             energy: The expectation value ⟨H⟩ of the observable. When provided,
                 the method returns Var(H) = ⟨H²⟩ - ⟨H⟩². When not provided,
                 returns ⟨H²⟩ (useful for backward compatibility).
