@@ -24,7 +24,7 @@ BowtieQGT
    .. autosummary::
       :nosignatures:
 
-      ~BowtieQGT.get_derivatives
+      ~BowtieQGT.evaluate
       ~BowtieQGT.extract_qgt
       ~BowtieQGT.extract_gradient
       ~BowtieQGT.extract_variance

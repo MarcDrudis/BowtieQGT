@@ -1,11 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # (C) Copyright IBM 2025.
 
-"""Unit tests for BowtieQGT without external dependencies.
+"""Compare BowtieQGT against Qiskit's ReverseQGT and ReverseEstimatorGradient.
 
-This test module validates the BowtieQGT implementation by comparing its results
-against Qiskit's reference implementations (ReverseQGT and ReverseEstimatorGradient).
-It uses various circuit topologies and gate types.
+Each case is a different circuit topology and gate set.
 """
 
 import unittest
@@ -185,21 +183,17 @@ class TestBowtieQGT(unittest.TestCase):
     """Test suite for BowtieQGT implementation."""
 
     @data(
-        # (VarQITE, phase_fix, num_qubits, rotation_blocks, entanglement_blocks, entanglement_pairs)
+        # (num_qubits, rotation_blocks, entanglement_blocks, entanglement_pairs)
         # Test 1: Extended linear chain topology with mixed gates
         (
-            True,
-            True,
             7,
             ["ry", "rz"],
             ["rxx", "ryy"],
             [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6)],
         ),
-        (False, True, 7, ["rx", "ry"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6)]),
+        (7, ["rx", "ry"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6)]),
         # Test 2: Star topology with central hub and mixed parametric gates
         (
-            True,
-            True,
             8,
             ["rx", "rz"],
             ["rxx", "rzz"],
@@ -207,8 +201,6 @@ class TestBowtieQGT(unittest.TestCase):
         ),
         # Test 3: Ring/circular topology with parametric gates on more qubits
         (
-            True,
-            True,
             6,
             ["ry"],
             ["rxx", "ryy", "rzz"],
@@ -216,8 +208,6 @@ class TestBowtieQGT(unittest.TestCase):
         ),
         # Test 4: Dense mesh topology (partial all-to-all with mixed gates)
         (
-            False,
-            True,
             6,
             ["rx", "ry"],
             ["rxx", "ryy"],
@@ -225,8 +215,6 @@ class TestBowtieQGT(unittest.TestCase):
         ),
         # Test 5: Multi-layer ladder topology (3 parallel chains with cross-rungs)
         (
-            True,
-            True,
             6,
             ["ry", "rz"],
             "cx",
@@ -234,8 +222,6 @@ class TestBowtieQGT(unittest.TestCase):
         ),
         # Test 6: Hexagonal/honeycomb-like topology with parametric gates
         (
-            True,
-            False,
             6,
             ["ry", "rz"],
             ["rxx", "rzz"],
@@ -243,8 +229,6 @@ class TestBowtieQGT(unittest.TestCase):
         ),
         # Test 7: Tree topology (binary tree structure)
         (
-            False,
-            False,
             7,
             ["ry", "rz"],
             ["ryy", "rzz"],
@@ -252,8 +236,6 @@ class TestBowtieQGT(unittest.TestCase):
         ),
         # Test 8: Irregular mesh with long-range connections
         (
-            True,
-            True,
             8,
             ["rx", "ry", "rz"],
             "cx",
@@ -261,8 +243,6 @@ class TestBowtieQGT(unittest.TestCase):
         ),
         # Test 9: Bipartite-like topology with cross-connections
         (
-            False,
-            True,
             8,
             ["ry"],
             ["rxx", "ryy", "rzz"],
@@ -270,8 +250,6 @@ class TestBowtieQGT(unittest.TestCase):
         ),
         # Test 10: Complex mixed topology with varied entanglement
         (
-            True,
-            False,
             7,
             ["rx", "ry"],
             ["rxx", "ryy"],
@@ -290,45 +268,37 @@ class TestBowtieQGT(unittest.TestCase):
             ],
         ),
         # Test 11: Non-parameterized gates - CNOT with parameterized rotations
-        (True, True, 5, ["ry"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4)]),
-        (False, True, 5, ["rz"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4)]),
+        (5, ["ry"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4)]),
+        (5, ["rz"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4)]),
         # Test 12: Non-parameterized gates - Hadamard with parameterized rotations
-        (True, True, 4, ["h", "ry"], ["rxx"], [(0, 1), (1, 2), (2, 3)]),
-        (False, True, 4, ["ry", "h"], "cx", [(0, 1), (2, 3)]),
+        (4, ["h", "ry"], ["rxx"], [(0, 1), (1, 2), (2, 3)]),
+        (4, ["ry", "h"], "cx", [(0, 1), (2, 3)]),
         # Test 13: Non-parameterized gates - S gate with parameterized rotations
-        (True, True, 4, ["s", "ry"], ["rxx", "ryy"], [(0, 1), (1, 2), (2, 3)]),
-        (False, True, 4, ["ry", "s"], "cx", [(0, 1), (1, 2), (2, 3)]),
+        (4, ["s", "ry"], ["rxx", "ryy"], [(0, 1), (1, 2), (2, 3)]),
+        (4, ["ry", "s"], "cx", [(0, 1), (1, 2), (2, 3)]),
         # Test 14: Mixed non-parameterized gates - H, S, and CNOT
-        (True, True, 5, ["h", "ry", "s"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4)]),
-        (False, True, 5, ["s", "rz", "h"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4)]),
+        (5, ["h", "ry", "s"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4)]),
+        (5, ["s", "rz", "h"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4)]),
         # Test 15: Non-parameterized gates with complex topology
-        (True, True, 6, ["h", "ry"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0)]),
-        (False, False, 6, ["ry", "s"], "cx", [(0, 2), (1, 3), (2, 4), (3, 5), (0, 5)]),
+        (6, ["h", "ry"], "cx", [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0)]),
+        (6, ["ry", "s"], "cx", [(0, 2), (1, 3), (2, 4), (3, 5), (0, 5)]),
         # Test 16: All non-parameterized two-qubit gates with single parameterized rotation
-        (True, True, 4, ["ry"], "cx", [(0, 1), (1, 2), (2, 3), (0, 2), (1, 3)]),
+        (4, ["ry"], "cx", [(0, 1), (1, 2), (2, 3), (0, 2), (1, 3)]),
         # Test 17: Alternating H and S gates with parameterized rotations
-        (True, True, 5, ["h", "s", "ry"], "cx", [(0, 1), (2, 3)]),
-        (False, True, 5, ["ry", "h", "s"], "cx", [(1, 2), (3, 4)]),
+        (5, ["h", "s", "ry"], "cx", [(0, 1), (2, 3)]),
+        (5, ["ry", "h", "s"], "cx", [(1, 2), (3, 4)]),
     )
     @unpack
     def test_bowtie_qgt_comprehensive(
         self,
-        is_VarQITE,
-        phase_fix,
         num_qubits,
         rotation_blocks,
         entanglement_blocks,
         entanglement_pairs,
     ):
-        """Comprehensive test of BowtieQGT functionality.
-
-        Tests QGT computation, gradient extraction, variance extraction, and
-        comparison against reference implementations in a single test to avoid
-        redundant computations. Tests various circuit topologies and gate types.
+        """Compare every block of the generalized QGT against Qiskit references.
 
         Args:
-            is_VarQITE: If True, uses real gradients; if False, uses imaginary gradients.
-            phase_fix: If True, applies phase correction for numerical stability.
             num_qubits: Number of qubits in the test circuit.
             rotation_blocks: Single-qubit rotation gates to use.
             entanglement_blocks: Two-qubit entangling gates to use.
@@ -342,155 +312,64 @@ class TestBowtieQGT(unittest.TestCase):
             entanglement_pairs=entanglement_pairs,
         )
         obs = create_test_observable(num_qubits)
+        bowtie = BowtieQGT(qc, obs)
 
-        bowtie = BowtieQGT(
-            qc, obs, pbar=0, accelerator="CPU", VarQITE_gradient=is_VarQITE, phase_fix=phase_fix
-        )
-
-        # Use sequential parameter values
         param_values = np.arange(qc.num_parameters) * 0.1
-        param_dict = dict(zip(qc.parameters, param_values))
+        generalized_qgt, energy = bowtie.evaluate(param_values)
 
-        # Compute with BowtieQGT (single computation for all tests)
-        gen_qgt, energy = bowtie.get_derivatives(param_dict)
-        qgt = bowtie.extract_qgt(gen_qgt)  # type: ignore
-        gradient = bowtie.extract_gradient(gen_qgt)  # type: ignore
-        variance = bowtie.extract_variance(gen_qgt, energy)  # type: ignore
-
-        # Compute reference values
         reference_qgt = (
             ReverseQGT(derivative_type=DerivativeType.COMPLEX)
             .run([qc], [param_values.tolist()])
             .result()
             .qgts[0]
         )
-        reference_state = Statevector(qc.assign_parameters(param_dict))
-        reference_energy = reference_state.expectation_value(obs)
-        reference_h2 = reference_state.expectation_value((obs**2).simplify())
-        reference_variance = reference_h2 - reference_energy**2
-
-        # Compute reference gradient
-        derivative_type = DerivativeType.REAL if is_VarQITE else DerivativeType.IMAG
-        identity_string = "I" * obs.num_qubits  # type: ignore
-        mod_obs = SparsePauliOp.from_list(
-            obs.to_list() + [(identity_string, -energy)]  # type: ignore
-        ).simplify()
-        reference_gradient = (
-            ReverseEstimatorGradient(derivative_type)
-            .run([qc], [mod_obs], [param_values.tolist()])
+        reference_state = Statevector(qc.assign_parameters(param_values))
+        reference_energy = reference_state.expectation_value(obs).real
+        reference_variance = (
+            reference_state.expectation_value((obs @ obs).simplify()).real - reference_energy**2
+        )
+        # Qiskit's REAL/IMAG gradients of <H - E> are -2 b_imag and -2 b_real respectively.
+        centered_obs = (obs - reference_energy * SparsePauliOp("I" * num_qubits)).simplify()
+        reference_b = {
+            which: -0.5
+            * ReverseEstimatorGradient(derivative_type)
+            .run([qc], [centered_obs], [param_values.tolist()])
             .result()
             .gradients[0]
-        )
+            for which, derivative_type in [
+                ("imag_time", DerivativeType.REAL),
+                ("real_time", DerivativeType.IMAG),
+            ]
+        }
 
-        # Test 1: QGT is Hermitian
         with self.subTest("Generalized QGT is Hermitian"):
-            self.assertTrue(
-                ishermitian(gen_qgt.real),  # type: ignore
-                (
-                    "Real part of generalized QGT should be Hermitian "
-                    f"(VarQITE={is_VarQITE}, phase_fix={phase_fix})"
-                ),
-            )
+            self.assertTrue(ishermitian(generalized_qgt, atol=1e-12))
 
-        # Test 2: QGT is positive semi-definite (only when phase_fix=True)
-        if phase_fix:
-            with self.subTest("QGT is positive semi-definite"):
-                eigenvalues, _ = eigh(qgt.real)
-                self.assertTrue(
-                    np.all(eigenvalues >= -1e-10),
-                    "QGT eigenvalues should be non-negative "
-                    f"(VarQITE={is_VarQITE}, phase_fix={phase_fix})",
-                )
+        with self.subTest("QGT is positive semi-definite"):
+            self.assertTrue(np.all(eigh(bowtie.extract_qgt(generalized_qgt))[0] >= -1e-10))
 
-        # Test 3: QGT real part matches reference (only when phase_fix=True)
-        if phase_fix:
-            with self.subTest("QGT real part matches reference"):
-                np.testing.assert_allclose(
-                    qgt.real,
-                    reference_qgt.real,
-                    rtol=1e-5,
-                    atol=1e-8,
-                    err_msg=f"QGT real part mismatch (VarQITE={is_VarQITE}, phase_fix={phase_fix})",
-                )
-
-        # Test 4: QGT imaginary part matches reference (only when phase_fix=True)
-        if phase_fix:
-            with self.subTest("QGT imaginary part matches reference"):
-                np.testing.assert_allclose(
-                    qgt.imag,
-                    reference_qgt.imag,
-                    rtol=1e-5,
-                    atol=1e-8,
-                    err_msg=(
-                        f"QGT imaginary part mismatch (VarQITE={is_VarQITE}, phase_fix={phase_fix})"
-                    ),
-                )
-
-        # Test 5: Energy matches reference
-        with self.subTest("Energy expectation value matches reference"):
+        with self.subTest("Complex QGT matches reference"):
             np.testing.assert_allclose(
-                energy,
-                reference_energy,
+                bowtie.extract_qgt(generalized_qgt, part="complex"),
+                reference_qgt,
                 rtol=1e-5,
                 atol=1e-8,
-                err_msg=f"Energy mismatch (VarQITE={is_VarQITE}, phase_fix={phase_fix})",
             )
 
-        # Test 6: Gradient has correct shape
-        with self.subTest("Gradient has correct shape"):
-            self.assertEqual(
-                gradient.shape, (qc.num_parameters,), "Gradient should have shape (num_parameters,)"
-            )
+        with self.subTest("Energy matches reference"):
+            self.assertIsInstance(energy, float)
+            np.testing.assert_allclose(energy, reference_energy, rtol=1e-5, atol=1e-8)
 
-        # Test 7: Gradient is finite
-        with self.subTest("Gradient contains finite values"):
-            self.assertTrue(
-                np.all(np.isfinite(gradient)), "Gradient should contain only finite values"
-            )
+        for which, expected in reference_b.items():
+            with self.subTest(f"{which} gradient matches reference"):
+                gradient = bowtie.extract_gradient(generalized_qgt, which=which)
+                self.assertEqual(gradient.shape, (qc.num_parameters,))
+                np.testing.assert_allclose(gradient, expected, rtol=1e-5, atol=1e-8)
 
-        # Test 8: Variance is scalar
-        with self.subTest("Variance is scalar"):
-            self.assertTrue(
-                np.isscalar(variance) or variance.shape == (), "Variance should be a scalar value"
-            )
-
-        # Test 9: Variance is real
-        with self.subTest("Variance is real"):
-            self.assertTrue(
-                np.abs(np.imag(variance)) < 1e-10,  # type: ignore
-                "Variance should be real for Hermitian observables",
-            )
-
-        # Test 10: Variance is non-negative
-        with self.subTest("Variance is non-negative"):
-            self.assertGreaterEqual(
-                float(np.real(variance)),  # type: ignore
-                -1e-10,
-                "Variance should be non-negative",
-            )
-
-        # Test 11: Variance matches reference value
-        with self.subTest("Variance matches reference value"):
+        with self.subTest("Variance matches reference"):
             np.testing.assert_allclose(
-                variance,
-                reference_variance,
-                rtol=1e-5,
-                atol=1e-8,
-                err_msg="Variance does not match reference value",
+                bowtie.extract_variance(generalized_qgt), reference_variance, rtol=1e-5, atol=1e-8
             )
-
-        # Test 13: Gradient matches reference (only when phase_fix=True)
-        if phase_fix:
-            with self.subTest("Gradient matches reference"):
-                np.testing.assert_allclose(
-                    gradient.real,
-                    reference_gradient.real,
-                    rtol=1e-5,
-                    atol=1e-8,
-                    err_msg=(
-                        f"Gradient real part mismatch (VarQITE={is_VarQITE}, phase_fix={phase_fix})"
-                    ),
-                )
 
 
 if __name__ == "__main__":

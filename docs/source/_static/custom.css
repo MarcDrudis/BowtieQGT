@@ -1,0 +1,4 @@
+/* The theme only spaces sidebar logos; give the header logo room before the title. */
+.nftt-navbar .project-logo {
+  margin-right: 0.6rem;
+}

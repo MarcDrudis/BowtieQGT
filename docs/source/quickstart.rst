@@ -1,13 +1,11 @@
 Quick Start Guide
 =================
 
-This guide demonstrates basic usage of BowtieQGT for computing quantum geometric tensors and gradients.
+This guide shows how to compute the QGT, McLachlan gradients and the energy variance of a
+parameterized circuit.
 
 Basic Usage
 -----------
-
-Computing QGT and Gradients
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -16,164 +14,163 @@ Computing QGT and Gradients
    from qiskit.quantum_info import SparsePauliOp
    from bowtie_qgt.bowtieqgt import BowtieQGT
 
-   # Create a parameterized quantum circuit
    num_qubits = 4
    qc = QuantumCircuit(num_qubits)
-   params = ParameterVector('θ', 8)
-   
-   # Build a simple ansatz
+   params = ParameterVector("θ", 8)
    for i in range(num_qubits):
        qc.ry(params[i], i)
-   
    for i in range(num_qubits - 1):
        qc.cx(i, i + 1)
-   
    for i in range(num_qubits):
        qc.ry(params[i + 4], i)
 
-   # Define a Hamiltonian observable
-   obs = SparsePauliOp.from_list([
-       ("ZIII", -1.0),
-       ("IZII", -1.0),
-       ("IIZI", -1.0),
-       ("IIIZ", -1.0),
-       ("XXII", -0.5),
-       ("YYII", -0.5),
-   ])
+   hamiltonian = SparsePauliOp.from_list(
+       [("ZIII", -1.0), ("IZII", -1.0), ("IIZI", -1.0), ("IIIZ", -1.0), ("XXII", -0.5)]
+   )
 
-   # Initialize BowtieQGT
-   bowtie = BowtieQGT(qc, obs, phase_fix=True, pbar=1)
+   bowtie = BowtieQGT(qc, hamiltonian)
+   generalized_qgt, energy = bowtie.evaluate([0.1] * qc.num_parameters)
 
-   # Set parameter values
-   param_values = {p: 0.1 for p in qc.parameters}
+   qgt = bowtie.extract_qgt(generalized_qgt)  # real part by default
+   b_real = bowtie.extract_gradient(generalized_qgt, which="real_time")
+   b_imag = bowtie.extract_gradient(generalized_qgt, which="imag_time")
+   variance = bowtie.extract_variance(generalized_qgt)
 
-   # Compute generalized QGT and energy
-   gen_qgt, energy = bowtie.get_derivatives(param_values)
+``evaluate`` accepts either a sequence of values ordered like ``qc.parameters`` or a
+``{Parameter: value}`` mapping. Every parameter must be bound.
 
-   # Extract components
-   qgt = bowtie.extract_qgt(gen_qgt)
-   gradient = bowtie.extract_gradient(gen_qgt)
-   variance = bowtie.extract_variance(gen_qgt, energy)
+Supported Circuits
+------------------
 
-   print(f"Energy: {energy}")
-   print(f"QGT shape: {qgt.shape}")
-   print(f"Gradient shape: {gradient.shape}")
-   print(f"Variance: {variance}")
+Every parameter must be the bare angle of exactly one ``rx``, ``ry``, ``rz``, ``rxx``,
+``ryy`` or ``rzz`` gate. Any non-parameterized gates are allowed. The constructor raises a
+``ValueError`` for parameter expressions (``2*θ``), other parameterized gates, a parameter
+that appears in several gates, classical bits, control flow, or a parameterized global
+phase.
 
-Real vs Imaginary Time Evolution
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Identity terms in the Hamiltonian are allowed: they shift the energy and nothing else.
 
-For **real-time evolution** (VarQITE):
+Real and Imaginary Time
+-----------------------
 
-.. code-block:: python
+The same ``BowtieQGT`` object serves both. You only choose the direction when you extract
+the gradient:
 
-   bowtie = BowtieQGT(qc, obs, VarQITE_gradient=True)
+.. list-table::
+   :header-rows: 1
+   :stub-columns: 1
 
-For **imaginary-time evolution**:
+   * -
+     - Real time (VarQRTE)
+     - Imaginary time (VarQITE)
+   * - Target
+     - :math:`|\psi(t)\rangle = e^{-iHt}|\psi_0\rangle`
+     - :math:`|\psi(\tau)\rangle \propto e^{-H\tau}|\psi_0\rangle`
+   * - Use
+     - Quantum dynamics
+     - Ground-state preparation
+   * - Call
+     - ``extract_gradient(g, which="real_time")``
+     - ``extract_gradient(g, which="imag_time")``
+   * - :math:`b_i`
+     - :math:`\mathrm{Im}(\langle\partial_i\psi|H|\psi\rangle - \langle\partial_i\psi|\psi\rangle E)`
+     - :math:`-\mathrm{Re}\langle\partial_i\psi|H|\psi\rangle = -\tfrac12\partial_i E`
 
-.. code-block:: python
-
-   bowtie = BowtieQGT(qc, obs, VarQITE_gradient=False)
-
-GPU Acceleration
-~~~~~~~~~~~~~~~~
-
-Enable GPU acceleration for faster computation:
-
-.. code-block:: python
-
-   bowtie = BowtieQGT(qc, obs, accelerator="GPU")
-
-Phase Fixing
-~~~~~~~~~~~~
-
-Phase fixing improves numerical stability by removing contributions from the |0...0⟩ state:
+McLachlan's variational principle gives :math:`\mathrm{Re}(G)\,\dot\theta = b` in both
+cases. The QGT is the same; only :math:`b` changes:
 
 .. code-block:: python
 
-   # With phase fixing (recommended)
-   bowtie = BowtieQGT(qc, obs, phase_fix=True)
-   
-   # Without phase fixing
-   bowtie = BowtieQGT(qc, obs, phase_fix=False)
+   qgt = bowtie.extract_qgt(generalized_qgt)
 
-Progress Bars
-~~~~~~~~~~~~~
+   # Real time: follow e^{-iHt}
+   b = bowtie.extract_gradient(generalized_qgt, which="real_time")
+   theta_dot = np.linalg.solve(qgt + 1e-6 * np.eye(len(b)), b)
 
-Control verbosity with the ``pbar`` parameter:
+   # Imaginary time: flow towards the ground state
+   b = bowtie.extract_gradient(generalized_qgt, which="imag_time")
+   theta_dot = np.linalg.solve(qgt + 1e-6 * np.eye(len(b)), b)
+
+The names refer to the evolution, not to the part of the matrix that is taken: the
+real-time gradient happens to be the real part of the mixed block of the generalized QGT,
+but in terms of the raw overlap :math:`\langle\partial_i\psi|H|\psi\rangle` it is the
+imaginary part. ``which=`` hides this bookkeeping. :doc:`examples` has a full run of both.
+
+Choosing the Simulator
+----------------------
+
+``BowtieQGT`` runs the bowtie circuits on a default statevector ``AerSimulator``. Choose
+the device with ``"CPU"`` (default) or ``"GPU"``:
 
 .. code-block:: python
 
-   # No progress bars
-   bowtie = BowtieQGT(qc, obs, pbar=0)
-   
-   # Main computation progress
-   bowtie = BowtieQGT(qc, obs, pbar=1)
-   
-   # Detailed progress including QGT computation
-   bowtie = BowtieQGT(qc, obs, pbar=2)
+   bowtie = BowtieQGT(qc, hamiltonian)                   # CPU
+   bowtie = BowtieQGT(qc, hamiltonian, simulator="GPU")  # needs qiskit-aer-gpu
+
+For anything else (precision, number of threads, ...), pass your own noiseless
+statevector simulator:
+
+.. code-block:: python
+
+   from qiskit_aer import AerSimulator
+
+   simulator = AerSimulator(method="statevector", precision="single", max_parallel_threads=8)
+   bowtie = BowtieQGT(qc, hamiltonian, simulator=simulator)
+
+Progress and Timings
+--------------------
+
+``verbosity=1`` shows progress bars while building the bowties and prints their light-cone
+widths. ``verbosity=2`` also reports every ``evaluate`` call. The time spent in the last
+call is always available:
+
+.. code-block:: python
+
+   bowtie.evaluate(values)
+   bowtie.last_timings  # {"simulation": seconds, "assembly": seconds}
 
 Understanding the Output
 ------------------------
 
-Generalized QGT Matrix Structure
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The generalized QGT matrix has the following block structure:
+The generalized QGT is the connected QGT of the circuit extended by one first-order
+Trotter step :math:`e^{-i c_j h_j t}` per Hamiltonian term. It is complex Hermitian, with
+``N`` circuit parameters followed by ``M`` non-identity Hamiltonian terms:
 
 .. code-block:: text
 
    ┌─────────────┬──────────────┐
-   │     QGT     │   Gradient   │
-   │  (N×N)      │   (N×M)      │
+   │     QGT     │    mixed     │
+   │   (N×N)     │    (N×M)     │
    ├─────────────┼──────────────┤
-   │  Gradient†  │   Variance   │
-   │  (M×N)      │   (M×M)      │
+   │   mixed†    │ Hamiltonian  │
+   │   (M×N)     │    (M×M)     │
    └─────────────┴──────────────┘
 
-Where:
-- N = number of circuit parameters
-- M = number of observable terms
-
-QGT Block
-~~~~~~~~~
-
-The QGT (upper-left N×N block) is the metric tensor for the parameter space:
+The parameter tangents are :math:`|\partial_i\psi\rangle` and the Hamiltonian tangents are
+:math:`-i h_j|\psi\rangle`. For :math:`H = \sum_j c_j h_j`:
 
 .. math::
 
-   G_{ij} = \langle\partial_i\psi|\partial_j\psi\rangle - \langle\partial_i\psi|\psi\rangle\langle\psi|\partial_j\psi\rangle
+   G_{ij} &= \langle\partial_i\psi|\partial_j\psi\rangle
+            - \langle\partial_i\psi|\psi\rangle\langle\psi|\partial_j\psi\rangle \\
+   b^{\text{real}}_i + i\, b^{\text{imag}}_i &= \sum_j \tilde G_{i, N+j}\, c_j \\
+   \mathrm{Var}[H] &= \sum_{jk} c_j^*\, \tilde G_{N+j, N+k}\, c_k
 
-Gradient Block
-~~~~~~~~~~~~~~
+with :math:`b^{\text{real}}_i = \mathrm{Im}(\langle\partial_i\psi|H|\psi\rangle
+- \langle\partial_i\psi|\psi\rangle E)` and
+:math:`b^{\text{imag}}_i = -\mathrm{Re}(\langle\partial_i\psi|H|\psi\rangle
+- \langle\partial_i\psi|\psi\rangle E)`. For Hermitian :math:`H` the last term is
+real and drops out, so :math:`b^{\text{imag}} = -\tfrac12\nabla_\theta E`.
 
-The gradient (upper-right N×M block) contains energy derivatives:
-
-.. math::
-
- \frac{\partial E }{\partial\theta_i} = \sum_{j=0}^{M-1} c_j \frac{\partial h_j}{\partial\theta_i} = \langle\partial_i\psi|h_j|\psi\rangle - \langle\partial_i\psi|\psi\rangle\langle\psi|h_j|\psi\rangle 
-
-for a Hamiltonian:
-
-.. math::
-
-   H=\sum_{j=0}^{M-1} c_j h_j
-
-Variance Block
-~~~~~~~~~~~~~~
-
-The variance (lower-right M×M block) contains observable variance information.
-
-
-.. math::
-
-    \text{Var}[H] = \sum_{i=0}^{M-1}\sum_{j=0}^{M-1} \langle\psi|h_i h_j|\psi\rangle - \langle\psi|h_i|\psi\rangle\langle\psi|h_j|\psi\rangle 
-
-
+``extract_qgt`` returns :math:`\mathrm{Re}\,G` by default, the Fubini-Study metric that
+McLachlan's principle uses. ``part="imag"`` gives the Berry curvature and
+``part="complex"`` the full QGT, for other variational principles. Rotations follow
+Qiskit's convention :math:`e^{-i\theta P/2}`, so ``G`` matches
+``qiskit_algorithms.gradients.ReverseQGT``.
 
 Next Steps
 ----------
 
-- Explore the :doc:`api` for detailed API documentation
-- Check :doc:`examples` for advanced usage patterns
-- Review the test suite in ``test/test_bowtie_qgt.py`` for more examples
+- :doc:`examples`: VarQRTE and VarQITE of an Ising chain
+- :doc:`api`: full API reference
+- :doc:`changelog`: release notes and migration guide
