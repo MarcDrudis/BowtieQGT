@@ -198,7 +198,7 @@ class BowtieQGT:
         self,
         qc: QuantumCircuit,
         hamiltonian: SparsePauliOp,
-        simulator: AerSimulator | None = None,
+        simulator: str | AerSimulator = "CPU",
         verbosity: int = 0,
     ):
         """Build and transpile the bowtie circuits.
@@ -208,19 +208,19 @@ class BowtieQGT:
                 exactly one ``rx``, ``ry``, ``rz``, ``rxx``, ``ryy`` or ``rzz`` gate.
             hamiltonian: Hamiltonian as a ``SparsePauliOp``. Identity terms are
                 allowed and only shift the energy.
-            simulator: Noiseless statevector ``AerSimulator`` used to run the
-                bowties. Defaults to ``AerSimulator(method="statevector")``. Pass your
-                own to pick the device, precision or parallelism, e.g.
-                ``AerSimulator(method="statevector", device="GPU")`` or
-                ``AerSimulator(method="statevector", max_parallel_threads=8)``.
+            simulator: ``"CPU"`` (default) or ``"GPU"`` for a default statevector
+                ``AerSimulator`` on that device. For full control (precision,
+                threads, ...) pass a noiseless statevector ``AerSimulator`` instead,
+                e.g. ``AerSimulator(method="statevector", max_parallel_threads=8)``.
             verbosity: 0 is silent. 1 shows progress bars while building the
                 bowties and prints the distribution of light-cone widths. 2 also
                 reports progress and timings on every :meth:`evaluate` call.
 
         Raises:
             ValueError: If the circuit is not supported (see
-                :func:`~bowtie_qgt.bowtie_circuits.validate_circuit`) or the simulator
-                is not a noiseless statevector simulator.
+                :func:`~bowtie_qgt.bowtie_circuits.validate_circuit`), the device is
+                not ``"CPU"`` or ``"GPU"``, or the simulator is not a noiseless
+                statevector simulator.
 
         Warns:
             UserWarning: If the Hamiltonian is a multiple of the identity.
@@ -229,7 +229,13 @@ class BowtieQGT:
         self.qc = qc
         self.hamiltonian = hamiltonian
         self.verbosity = verbosity
-        self.simulator = simulator or AerSimulator(method="statevector")
+        if isinstance(simulator, str):
+            if simulator not in ("CPU", "GPU"):
+                raise ValueError(
+                    f"simulator must be 'CPU', 'GPU' or an AerSimulator, got {simulator!r}"
+                )
+            simulator = AerSimulator(method="statevector", device=simulator)
+        self.simulator = simulator
         if self.simulator.options.method != "statevector" or self.simulator.options.noise_model:
             raise ValueError(
                 "The simulator must be a noiseless AerSimulator with method='statevector'."

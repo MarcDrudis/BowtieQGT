@@ -23,8 +23,9 @@ It is **not backwards compatible**; see the migration guide below.
 - `extract_qgt` returns the real part by default (the metric McLachlan uses). Use
   `part="complex"` for the previous complex output, or `part="imag"` for the Berry curvature.
 - `extract_variance(generalized_qgt)` no longer takes `energy`.
-- `accelerator` is replaced by `simulator`: pass any `AerSimulator`. The internal
-  `ThreadPoolExecutor` is gone. It was never used by Aer, so it had no effect.
+- `accelerator` is replaced by `simulator`, which takes `"CPU"` (default), `"GPU"`, or any
+  noiseless statevector `AerSimulator` for full control. The internal `ThreadPoolExecutor`
+  is gone. It was never used by Aer, so it had no effect.
 - `pbar` and `verbose_init` are merged into `verbosity` (0, 1 or 2).
 - `compute_variance` is removed (it had no effect).
 - The generalized QGT no longer has the Hamiltonian coefficients folded in. The QGT
@@ -74,9 +75,7 @@ b = bowtie.extract_gradient(gen_qgt).real / 2  # real time, see table
 variance = bowtie.extract_variance(gen_qgt, energy)
 
 # 2.0
-from qiskit_aer import AerSimulator
-
-bowtie = BowtieQGT(qc, obs, verbosity=1, simulator=AerSimulator(method="statevector", device="GPU"))
+bowtie = BowtieQGT(qc, obs, verbosity=1, simulator="GPU")
 generalized_qgt, energy = bowtie.evaluate(param_dict)
 qgt = bowtie.extract_qgt(generalized_qgt)
 b = bowtie.extract_gradient(generalized_qgt, which="real_time")

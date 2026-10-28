@@ -99,19 +99,23 @@ imaginary part. ``which=`` hides this bookkeeping. :doc:`examples` has a full ru
 Choosing the Simulator
 ----------------------
 
-``BowtieQGT`` runs the bowtie circuits on ``AerSimulator(method="statevector")`` by
-default. Pass your own noiseless statevector simulator to choose the device, precision
-or number of threads:
+``BowtieQGT`` runs the bowtie circuits on a default statevector ``AerSimulator``. Choose
+the device with ``"CPU"`` (default) or ``"GPU"``:
+
+.. code-block:: python
+
+   bowtie = BowtieQGT(qc, hamiltonian)                   # CPU
+   bowtie = BowtieQGT(qc, hamiltonian, simulator="GPU")  # needs qiskit-aer-gpu
+
+For anything else (precision, number of threads, ...), pass your own noiseless
+statevector simulator:
 
 .. code-block:: python
 
    from qiskit_aer import AerSimulator
 
-   gpu = AerSimulator(method="statevector", device="GPU")
-   bowtie = BowtieQGT(qc, hamiltonian, simulator=gpu)
-
-   eight_threads = AerSimulator(method="statevector", max_parallel_threads=8)
-   bowtie = BowtieQGT(qc, hamiltonian, simulator=eight_threads)
+   simulator = AerSimulator(method="statevector", precision="single", max_parallel_threads=8)
+   bowtie = BowtieQGT(qc, hamiltonian, simulator=simulator)
 
 Progress and Timings
 --------------------

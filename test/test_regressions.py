@@ -79,6 +79,14 @@ class TestValidation(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "noiseless AerSimulator"):
                 BowtieQGT(qc, OBS, simulator=simulator)
 
+    def test_simulator_device_string(self):
+        qc = QuantumCircuit(2)
+        qc.ry(Parameter("a"), 0)
+        self.assertEqual(BowtieQGT(qc, OBS).simulator.options.device, "CPU")
+        self.assertEqual(BowtieQGT(qc, OBS, simulator="CPU").simulator.options.device, "CPU")
+        with self.assertRaisesRegex(ValueError, "'CPU', 'GPU' or an AerSimulator"):
+            BowtieQGT(qc, OBS, simulator="cpu")
+
     def test_non_native_gate_is_transpiled(self):
         """A gate Aer cannot run natively must still work (bowties are transpiled)."""
         a = Parameter("a")

@@ -78,15 +78,16 @@ This will replace your current ``qiskit-aer`` installation with a GPU-enabled ve
 Using GPU Acceleration
 ~~~~~~~~~~~~~~~~~~~~~~
 
-To use GPU acceleration, pass a GPU simulator to BowtieQGT:
+To use GPU acceleration, pass ``simulator="GPU"``:
 
 .. code-block:: python
 
-   from qiskit_aer import AerSimulator
    from bowtie_qgt.bowtieqgt import BowtieQGT
 
-   gpu_sim = AerSimulator(method="statevector", device="GPU")
-   bowtie = BowtieQGT(circuit, hamiltonian, simulator=gpu_sim)
+   bowtie = BowtieQGT(circuit, hamiltonian, simulator="GPU")
+
+To configure the GPU simulator further, pass an ``AerSimulator`` instead, e.g.
+``AerSimulator(method="statevector", device="GPU", precision="single")``.
 
 .. note::
    GPU acceleration is most beneficial for circuits with 15+ qubits. For smaller circuits, CPU execution may be faster due to GPU overhead.

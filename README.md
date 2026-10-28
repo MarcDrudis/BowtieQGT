@@ -92,13 +92,11 @@ This reduces the computational complexity from exponential in the total number o
 
 ### Choosing the Simulator
 
-The bowties run on `AerSimulator(method="statevector")` by default. Pass your own to choose
-the device, precision or parallelism:
+The bowties run on a default statevector `AerSimulator` on the CPU. Use `simulator="GPU"`
+for the GPU, or pass your own `AerSimulator` to set precision, threads and so on:
 
 ```python
-from qiskit_aer import AerSimulator
-
-bowtie = BowtieQGT(qc, hamiltonian, simulator=AerSimulator(method="statevector", device="GPU"))
+bowtie = BowtieQGT(qc, hamiltonian, simulator="GPU")
 ```
 
 See the [Installation Guide](https://MarcDrudis.github.io/BowtieQGT/installation.html) for GPU setup instructions.
