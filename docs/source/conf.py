@@ -27,15 +27,13 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "sphinx_autodoc_typehints",
+    "myst_parser",  # Markdown, used to include CHANGELOG.md
 ]
 
-# Autodoc settings
+# Autodoc settings. Members are listed explicitly in docs/source/api/*.rst, so
+# automodule only renders each module's docstring and nothing is documented twice.
 autodoc_default_options = {
-    "members": True,
     "member-order": "bysource",
-    "special-members": "__init__",
-    "undoc-members": True,
-    "exclude-members": "__weakref__",
 }
 
 # Autosummary settings
@@ -59,7 +57,8 @@ napoleon_type_aliases = None
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
-    "qiskit": ("https://docs.quantum.ibm.com/api/qiskit/", None),
+    "qiskit": ("https://quantum.cloud.ibm.com/docs/api/qiskit/", None),
+    "qiskit_aer": ("https://qiskit.github.io/qiskit-aer/", None),
 }
 
 

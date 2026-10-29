@@ -199,6 +199,16 @@ Or in BibTeX format:
 
 For contributions, please follow the development setup above and submit pull requests through the GitHub repository.
 
+### Releasing
+
+The version comes from the latest git tag (via `setuptools_scm`), so a release is a tag on
+`main`. Use the `vX.Y.Z` style:
+
+1. Move the `CHANGELOG.md` heading from "unreleased" to the release date, and update
+   `version` and `date-released` in `CITATION.cff`.
+2. Tag the merge commit on `main` and push the tag: `git tag v2.0.0 && git push origin v2.0.0`.
+3. Publish a GitHub release from that tag (Zenodo archives it and mints a DOI).
+
 ## Support
 
 For issues, questions, or feature requests, please use the [GitHub Issues](https://github.com/MarcDrudis/BowtieQGT/issues) page.

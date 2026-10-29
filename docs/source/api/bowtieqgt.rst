@@ -2,36 +2,25 @@ bowtie_qgt.bowtieqgt
 ====================
 
 .. automodule:: bowtie_qgt.bowtieqgt
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :member-order: bysource
 
 Main Class
 ----------
 
-BowtieQGT
-~~~~~~~~~
-
 .. autoclass:: bowtie_qgt.bowtieqgt.BowtieQGT
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :members: evaluate, extract_qgt, extract_gradient, extract_variance
+   :member-order: bysource
    :special-members: __init__
 
-   .. rubric:: Methods
+Overlap Helpers
+---------------
 
-   .. autosummary::
-      :nosignatures:
+Low-level functions used by :class:`~bowtie_qgt.bowtieqgt.BowtieQGT` to evaluate overlaps
+of bowtie states on their shared qubits.
 
-      ~BowtieQGT.evaluate
-      ~BowtieQGT.extract_qgt
-      ~BowtieQGT.extract_gradient
-      ~BowtieQGT.extract_variance
+.. autofunction:: bowtie_qgt.bowtieqgt.connected_overlap
 
-Utility Functions
------------------
-
-.. autofunction:: bowtie_qgt.bowtieqgt.zeroth
+.. autofunction:: bowtie_qgt.bowtieqgt.sparse_overlap_tensors
 
 .. autofunction:: bowtie_qgt.bowtieqgt.get_slice
+
+.. autofunction:: bowtie_qgt.bowtieqgt.zeroth

@@ -1,7 +1,5 @@
 # Changelog
 
-<!-- towncrier release notes start -->
-
 ## 2.0.0 (unreleased)
 
 This release fixes the conventions of the generalized QGT so that every quantity matches

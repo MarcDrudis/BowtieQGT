@@ -69,7 +69,7 @@ This will replace your current ``qiskit-aer`` installation with a GPU-enabled ve
 .. code-block:: python
 
    from qiskit_aer import AerSimulator
-   
+
    # Check available devices
    sim = AerSimulator(method='statevector')
    print(sim.available_devices())
@@ -90,19 +90,14 @@ To configure the GPU simulator further, pass an ``AerSimulator`` instead, e.g.
 ``AerSimulator(method="statevector", device="GPU", precision="single")``.
 
 .. note::
-   GPU acceleration is most beneficial for circuits with 15+ qubits. For smaller circuits, CPU execution may be faster due to GPU overhead.
-
-Performance Tips
-~~~~~~~~~~~~~~~~
-
-- **Batch size**: Adjust the number of parallel circuit evaluations based on GPU memory
-- **Circuit depth**: Deeper circuits benefit more from GPU acceleration
-- **Memory management**: Monitor GPU memory usage for very large circuits
+   The cost of the bowtie method is set by the light-cone width of each bowtie, not by
+   the total number of qubits. A GPU mainly pays off when individual bowties are wide
+   (roughly 15+ qubits); for narrow bowties, CPU execution is usually faster.
 
 Development Installation
 -------------------------
 
-For developers who want to contribute to BowtieQGT or modify the source code, we recommend using `uv <https://docs.astral.sh/uv/>`_. 
+For developers who want to contribute to BowtieQGT or modify the source code, we recommend using `uv <https://docs.astral.sh/uv/>`_.
 
 
 Installing uv
@@ -142,20 +137,16 @@ Install BowtieQGT in editable mode with all development dependencies:
    uv venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-   # Install in editable mode with dev dependencies
-   uv pip install -e ".[dev]"
+   # Install in editable mode with the extras you need
+   uv pip install -e ".[dev]"            # tests, ruff, pre-commit
+   uv pip install -e ".[dev,docs]"       # ... plus Sphinx to build the docs
+   uv pip install -e ".[dev,examples]"   # ... plus matplotlib to run the examples
 
-Alternatively, use uv's sync command to install from the lock file:
+The extras are:
 
-.. code-block:: bash
-
-   uv sync --all-extras
-
-This installs:
-
-- **Core dependencies**: All runtime requirements
-- **Development tools**: pytest, ruff, pre-commit, towncrier
-- **Documentation tools**: Sphinx, Furo theme, autodoc extensions
+- ``dev``: pytest, ddt, qiskit-algorithms and scipy (for the reference tests), ruff, pre-commit
+- ``docs``: Sphinx, the ``sphinx-nefertiti`` theme, ``sphinx-autodoc-typehints``, ``myst-parser``
+- ``examples``: matplotlib and scipy, for ``docs/examples/mclachlan_ising.py``
 
 Running Without Activation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -177,13 +168,14 @@ Install pre-commit hooks to automatically check code quality before commits:
 
    uv run pre-commit install
 
-Now, every time you commit, the following checks will run automatically:
+Now, every time you commit, the following checks will run automatically
+(see ``.pre-commit-config.yaml``):
 
-- Trailing whitespace removal
-- End-of-file fixing
-- YAML validation
-- Ruff linting and formatting
-- Changelog fragment validation
+- Trailing whitespace removal and end-of-file fixing
+- YAML and TOML validation, and a check against large files
+- Ruff linting and formatting, the same checks CI runs
+
+To run them on the whole repository at once: ``uv run pre-commit run --all-files``.
 
 Verifying Your Installation
 ----------------------------
@@ -234,4 +226,3 @@ Next Steps
 ----------
 
 After installation, proceed to the :doc:`quickstart` guide to learn how to use BowtieQGT for your quantum computing workflows.
-
