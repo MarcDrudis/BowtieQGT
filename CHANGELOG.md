@@ -61,6 +61,8 @@ It is **not backwards compatible**; see the migration guide below.
 
 - Runtime dependencies trimmed to `numpy`, `qiskit`, `qiskit-aer` and `tqdm`. Test-only
   dependencies moved to the `dev` extra. The generated `_version.py` is no longer tracked.
+- Requires Qiskit 2.1 or newer. With Qiskit 2.0, `evaluate` could not look up values
+  given by parameter name for `ParameterVector` elements (e.g. `"v[0]"`).
 
 ### Migrating from 1.0
 

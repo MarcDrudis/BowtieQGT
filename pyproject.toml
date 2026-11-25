@@ -22,7 +22,7 @@ classifiers = [
 license = {text = "Apache-2.0"}
 dependencies = [
   "numpy>=2",
-  "qiskit>=2.0",
+  "qiskit>=2.1",
   "qiskit-aer",
   "tqdm",
 ]

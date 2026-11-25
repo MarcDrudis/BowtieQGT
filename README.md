@@ -165,7 +165,7 @@ Pre-commit hooks automatically run these checks before each commit.
 ## Requirements
 
 - Python 3.11+
-- Qiskit 2.0+
+- Qiskit 2.1+
 - Qiskit Aer
 - NumPy 2.0+
 - tqdm
