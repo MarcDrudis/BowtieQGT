@@ -56,6 +56,13 @@ It is **not backwards compatible**; see the migration guide below.
   cannot run natively (e.g. `QFTGate`) failed.
 - The energy variance is correct when bowties have disjoint support.
 - Complex coefficients enter the variance as `conj(c_i) c_j`.
+- Observable bowties have the correct light cone for Hamiltonian terms that are not
+  palindromic (e.g. `XZ`). Qiskit's `LightCone` pass reverses the order of `bit_terms`
+  relative to `indices` (Qiskit/qiskit#16866), so the light cone was computed for the
+  mirrored observable and the gradient and variance were wrong. Observable bowties now use
+  the same light-cone routine as parameter bowties.
+- The circuit is transpiled once, to Aer's gate set, instead of once per bowtie. On a
+  40-qubit circuit with 437 parameters construction drops from 72 s to 2.8 s.
 
 ### Packaging
 

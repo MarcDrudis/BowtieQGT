@@ -31,6 +31,7 @@ from time import perf_counter
 import numpy as np
 from qiskit import QuantumCircuit, transpile
 from qiskit.circuit import Parameter
+from qiskit.circuit.library import get_standard_gate_name_mapping
 from qiskit.converters import circuit_to_dag
 from qiskit.quantum_info import SparsePauliOp
 from qiskit_aer import AerSimulator
@@ -257,6 +258,12 @@ class BowtieQGT:
             )
         self.coeffs = np.array([coeff for _, _, coeff in terms], dtype=complex)
 
+        # Lower gates Aer cannot run natively (e.g. QFTGate) once, up front: bowties only
+        # add a PauliGate, which Aer runs. Level 0 keeps the parameterized rotations as-is.
+        # Basis gates rather than the simulator target, whose qubit cap (set by memory)
+        # would reject circuits wider than any single bowtie.
+        basis = set(self.simulator.target.operation_names) & set(get_standard_gate_name_mapping())
+        qc = transpile(qc, basis_gates=list(basis), optimization_level=0)
         dag = circuit_to_dag(qc)
         parameter_bowties = [
             remove_idle_qubits(parameter_bowtie(copy(dag), p))
@@ -278,11 +285,7 @@ class BowtieQGT:
         self.active_qubits = [active for _, active in bowties]
         for bw, _ in bowties:
             bw.save_statevector()
-        # Lower any gates Aer cannot run natively (e.g. high-level library gates).
-        self.bowties = [
-            transpile(bw, self.simulator)
-            for bw, _ in tqdm(bowties, "Transpiling bowties", disable=not show_progress)
-        ]
+        self.bowties = [bw for bw, _ in bowties]
 
         # Bowties on disjoint qubits have a vanishing connected overlap, so skip them.
         self.non_zero_indices = [

@@ -13,8 +13,6 @@ from qiskit.circuit.commutation_library import SessionCommutationChecker as scc
 from qiskit.circuit.library import PauliGate, XGate, YGate, ZGate
 from qiskit.converters import circuit_to_dag, dag_to_circuit
 from qiskit.dagcircuit import DAGCircuit
-from qiskit.transpiler import PassManager
-from qiskit.transpiler.passes.optimization.light_cone import LightCone
 
 # Mapping of rotation gate names to their corresponding Pauli gate objects
 _rotation_gates: dict[str, Gate] = {
@@ -181,11 +179,9 @@ def observable_bowtie(qc: QuantumCircuit, bit_terms: str, indices: list[int]) ->
 
     Args:
         qc: The quantum circuit for which to compute the observable bowtie.
-        bit_terms: Pauli string representing the observable terms (e.g., "XYZ"
-            for X⊗Y⊗Z). The string is reversed internally to match Qiskit's
-            qubit ordering convention.
-        indices: List of qubit indices on which the Pauli terms act, ordered
-            to correspond with the bit_terms string.
+        bit_terms: Pauli string in the ``SparsePauliOp.to_sparse_list`` convention:
+            ``bit_terms[k]`` acts on qubit ``indices[k]``.
+        indices: List of qubit indices on which the Pauli terms act.
 
     Returns:
         The full observable bowtie circuit, which may contain some idle quantum
@@ -197,14 +193,15 @@ def observable_bowtie(qc: QuantumCircuit, bit_terms: str, indices: list[int]) ->
         >>> qc.h(0)
         >>> qc.cx(0, 1)
         >>> bowtie = observable_bowtie(qc, "ZZ", [0, 1])
-
-    Note:
-        TODO: Use DAG representation instead of circuit representation for
-        consistency with parameter_bowtie.
     """
-    light_cone_circuit = PassManager(LightCone(bit_terms, indices)).run([qc])[0]
+    # ponytail: own light cone, not qiskit's LightCone pass, whose bit_terms
+    # ordering is reversed before Qiskit/qiskit#17616 and fixed after it.
+    pauli = PauliGate(bit_terms[::-1])  # PauliGate labels are big-endian
+    dag = circuit_to_dag(qc)
+    qubits = [dag.qubits[i] for i in indices]
+    light_cone_circuit = dag_to_circuit(_extend_lightcone(dag, set(qubits), [(pauli, qubits)]))
     bowtie_circuit = light_cone_circuit.copy()
-    bowtie_circuit.compose(PauliGate(bit_terms[::-1]), qubits=indices, inplace=True)
+    bowtie_circuit.compose(pauli, qubits=indices, inplace=True)
     bowtie_circuit.compose(light_cone_circuit.inverse(), inplace=True)
     return bowtie_circuit
 

@@ -9,11 +9,12 @@ import warnings
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter, ParameterVector
-from qiskit.circuit.library import QFTGate
-from qiskit.quantum_info import SparsePauliOp, Statevector
+from qiskit.circuit.library import PauliGate, QFTGate
+from qiskit.quantum_info import Operator, SparsePauliOp, Statevector
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel, depolarizing_error
 
+from bowtie_qgt.bowtie_circuits import observable_bowtie
 from bowtie_qgt.bowtieqgt import BowtieQGT
 
 OBS = SparsePauliOp.from_list([("ZI", 1.0), ("IX", 0.5)])
@@ -88,7 +89,7 @@ class TestValidation(unittest.TestCase):
             BowtieQGT(qc, OBS, simulator="cpu")
 
     def test_non_native_gate_is_transpiled(self):
-        """A gate Aer cannot run natively must still work (bowties are transpiled)."""
+        """A gate Aer cannot run natively must still work (the circuit is transpiled)."""
         a = Parameter("a")
         qc = QuantumCircuit(2)
         qc.ry(a, 0)
@@ -96,6 +97,16 @@ class TestValidation(unittest.TestCase):
         _, energy = BowtieQGT(qc, OBS).evaluate({a: 0.3})
         expected = Statevector(qc.assign_parameters({a: 0.3})).expectation_value(OBS)
         self.assertAlmostEqual(energy, expected.real)
+
+    def test_circuit_wider_than_simulator(self):
+        """Only bowties must fit in the simulator, not the full circuit."""
+        a = Parameter("a")
+        qc = QuantumCircuit(64)
+        qc.ry(a, 0)
+        qc.append(QFTGate(2), [62, 63])  # forces the transpile path
+        hamiltonian = SparsePauliOp.from_sparse_list([("Z", [0], 1.0)], 64)
+        _, energy = BowtieQGT(qc, hamiltonian).evaluate({a: 0.3})
+        self.assertAlmostEqual(energy, np.cos(0.3))
 
 
 def _exact(qc, hamiltonian, values):
@@ -193,3 +204,36 @@ class TestEdgeCases(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestObservableBowtieOrdering(unittest.TestCase):
+    """``bit_terms[k]`` acts on ``indices[k]``, as in ``SparsePauliOp.to_sparse_list``."""
+
+    def test_mixed_pauli_light_cone(self):
+        a, b = Parameter("a"), Parameter("b")
+        qc = QuantumCircuit(2)
+        qc.rz(a, 0)  # anticommutes with X on qubit 0
+        qc.rx(b, 1)  # anticommutes with Z on qubit 1
+        qc = qc.assign_parameters({a: 0.3, b: 0.7})
+        bowtie = observable_bowtie(qc, "XZ", [0, 1])
+        expected = qc.copy()
+        expected.compose(PauliGate("ZX"), [0, 1], inplace=True)
+        expected.compose(qc.inverse(), inplace=True)
+        self.assertTrue(Operator(bowtie).equiv(Operator(expected)))
+
+    def test_mixed_pauli_variance(self):
+        """End to end: non-palindromic terms must give the exact energy and variance."""
+        params = ParameterVector("p", 6)
+        qc = QuantumCircuit(3)
+        qc.h(range(3))
+        for q in range(3):
+            qc.rz(params[q], q)
+            qc.rx(params[q + 3], q)
+        qc.cx(0, 1)
+        hamiltonian = SparsePauliOp.from_list([("IZX", 1.0), ("YZX", 0.7), ("XIY", -0.4)])
+        values = [0.3, -0.8, 1.1, 0.5, 0.2, -0.6]
+        bowtie = BowtieQGT(qc, hamiltonian)
+        generalized_qgt, energy = bowtie.evaluate(values)
+        expected_energy, expected_variance = _exact(qc, hamiltonian, values)
+        self.assertAlmostEqual(energy, expected_energy)
+        self.assertAlmostEqual(bowtie.extract_variance(generalized_qgt), expected_variance)
